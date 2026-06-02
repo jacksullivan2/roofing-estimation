@@ -22,7 +22,7 @@ A typical project's manufacturer pricing folder (named `Manufactuer Products and
 | `<Product>-datasheet.pdf` (e.g. `SSQ-Del-Prado-datasheet.pdf`) | Technical datasheet for a slate / tile / membrane. **No pricing** but provides coverage (slates / m²), weight, lap, BS reference. | Use for **coverage / m² rates** only. |
 | `BBA_<cert no>_<product>.pdf` | BBA certification. No pricing, no coverage. | Note the certification for the tender qualifications, but do not extract as a priced line. |
 | `Pro-BW Catalyst Table.pdf`, `Product_Detail_*.pdf` | Technical reference tables (catalyst dosing, install details). | Use to **validate coverage / consumption** but not as a price source. |
-| Abseiler / scaffold / labour-rate quotes (`FA-<no>-Q*.pdf`, `labour_rates*.xlsx`) | Third-party priced quotations. | Extract as priced line items under `subcontractor_quotes`. |
+| Abseiler / scaffold / labour-rate quotes (`FA-<no>-Q*.pdf`, `labour_rates*.xlsx`) | Third-party priced quotations. | **Do not extract here** — these are step 06's territory (`subcontractor_priced_works`). See Section F for the ownership rule between material-side and labour-side subcontractor quotes. |
 
 ## Rules of engagement
 
@@ -81,6 +81,10 @@ For every priced product, capture an entry of this shape:
   name: "<verbatim product name, e.g. Pro-Prime® Bitumen>"
   description_verbatim: "<full description as printed, incl. coverage>"
   category: "<primer | avcl | insulation | adhesive | reinforcement | embedment_coat | top_coat | capsheet | aggregate_finish | sealer | underlay | trim | termination | sealant | mortar | cleaner | tool | accessory_kit | ancillary | catalyst | other>"
+  pricing_source: "<supplier_quote | manufacturer_open_schedule | manufacturer_trade_list | profix_internal_estimate | datasheet_only_no_price | sample_unit_only>"
+  is_sample_pricing: <bool>               # true when the supplier quote shows sample / single-unit quantity, not a real order quote
+                                          # (e.g. JJ Roofing SalesQuotation qty=1 of each slate)
+                                          # When true, step 07 must treat this as a placeholder and seek a trade-quantity re-quote.
   pack_sizes:
     - pack_size: "5 L tin"
       unit_price_gbp: 60.38
@@ -92,6 +96,20 @@ For every priced product, capture an entry of this shape:
       unit_price_gbp: 320.86
       coverage_value: 125
       unit_price_per_install_unit_gbp: 2.57
+  pricing_alternatives:                   # SECOND OR MORE prices for the SAME SKU from different sources
+                                          # (e.g. OS_Ancillary @ £83.73 vs S_Ancillary @ £96.29 for the same Fastfill 25 kg).
+                                          # Resolve the authoritative one in `pack_sizes` above; record the rest here for audit.
+    - source: "<file path or alias, e.g. S_Ancillary_010925.pdf>"
+      pack_size: "25 kg bag"
+      unit_price_gbp: 96.29
+      markup_vs_pack_sizes_pct: 15.0      # positive = higher than authoritative; negative = lower
+      notes: "<e.g. 'Profix internal marked-up version of the manufacturer open schedule'>"
+  coverage_table:                          # optional — use when coverage depends on context (slate pitch+lap; Pro-Cold warranty tier)
+    conditions: ["<the dimension(s) that vary — e.g. 'rafter pitch', 'lap (mm)', 'warranty years'>"]
+    rows:
+      - { condition_values: ["30°", "100"], coverage_value: 20.0, coverage_unit: "slates/m²" }
+      - { condition_values: ["35°", "100"], coverage_value: 20.5, coverage_unit: "slates/m²" }
+    source_table_note: "<e.g. 'SSQ Del Prado datasheet, Moderate exposure < 56.5 l/m² per spell'>"
   install_unit: "m²"                      # what the pricing sheet uses (m², lm, each)
   default_waste_pct: 10                   # 5 if Pro-Cold-family / sealants; 10 default
   warranty_tier_tied_to: null             # or e.g. "20 yr (Pro-Cold @ 1.0 ltr/m²)"
@@ -99,6 +117,14 @@ For every priced product, capture an entry of this shape:
   source_doc: "<file path>"
   source_page: <int>
 ```
+
+**`pricing_source` enum — what each value means**
+- `supplier_quote` — bespoke project quote from the manufacturer or merchant (typically a `Q_` file).
+- `manufacturer_open_schedule` — standing open schedule (typically an `OS_` or `S_` open list).
+- `manufacturer_trade_list` — published trade price list (e.g. Centaur, Soprema PDFs).
+- `profix_internal_estimate` — **no manufacturer or supplier document exists for this product** in the project folder; the rate is Profix's own internal estimate carried in the pricing sheet (e.g. Cromar Vent 3 breather membrane at £3.00/m² when no Cromar quote is present). Step 07 must surface these as gaps requiring trade confirmation.
+- `datasheet_only_no_price` — the product appears only in a technical datasheet (coverage / weight / standards) with no price; pair with a `supplier_quote` entry for the priced view.
+- `sample_unit_only` — supplier quote exists but shows sample / single-unit quantity (e.g. qty 1 of a slate at trade unit price). Set `is_sample_pricing: true`.
 
 Specifically for these product families, **capture the extra detail**:
 
@@ -193,13 +219,28 @@ commercial_terms:
 - Are alternative manufacturer prices available (e.g. Soprema sheet alongside Proteus Q_) — note both so the estimator can compare.
 
 ### F. Subcontractor quotes (if present)
-- Scaffold (e.g. Skyline Quote — total £ + scope).
-- Abseilers (FA-25410-Q1 quotes — daily/hourly rate + scope).
-- Specialist (Russell Cheeseman lead/zinc rates).
-- Tapered insulation design (Proteus — POA).
-- Manufactured items (rooflights, AC plant relocations).
 
-Store under `subcontractor_quotes`, with `scope`, `total_gbp`, `daily_rate_gbp`, `dates_valid`, `qualifications`.
+**Ownership rule** — `subcontractor_quotes` is a shared block written by **two** prompts and the split is by *nature of the quote*, not by who reads the file first:
+
+| Quote nature | Owned by | Block field |
+|---|---|---|
+| Materials / manufactured items supplied by a third party (rooflights, tapered insulation design, AC plant relocations, prefabricated metalwork) | **Prompt 05 (this prompt)** | `material_subcontractor_quotes` |
+| Specialist labour and access trades (scaffold, abseilers, leadworkers, slating gangs, plant hire) | **Prompt 06 (labour rates)** | `subcontractor_priced_works` |
+
+When a quote spans both (e.g. a scaffold quote that itemises hire-and-erect *plus* board purchase), the **predominant cost component** decides ownership; the other prompt may reference it in `notes` but does not duplicate the entry.
+
+Step 05 owns:
+- Tapered insulation design (Proteus — POA / bespoke scheme).
+- Bespoke manufactured items (rooflights, AC plant relocations, factory-bonded boards).
+- Specialist material supply not from the main manufacturer schedule.
+
+Step 06 owns:
+- Scaffold (e.g. Skyline Quote, JAB Scaffold QU2123).
+- Abseilers (FA-25410-Q1 quotes — daily/hourly rate + scope).
+- Specialist labour (Russell Cheeseman lead/zinc, Dave Lamb felt, Steve Rawls asphalt).
+- Plant hire (Edwards Plant & Tool Hire — wet vacs, gas, extension leads).
+
+Store under `material_subcontractor_quotes` here (and reference the labour ones in `notes` only if needed for awareness), each entry: `vendor`, `scope`, `total_gbp`, `daily_rate_gbp`, `dates_valid`, `qualifications`.
 
 ### G. Things this prompt does NOT cover (defer to other agent prompts)
 - Field areas (m², lm) — those come from the Condition Report / Schedule of Works.
@@ -254,7 +295,8 @@ priced_lines_consolidated:                # de-duped across documents, Q_ price 
   slates_and_tiles: [ ... ]
   catalysts_and_reactivators: [ ... ]
 
-subcontractor_quotes: [ ... ]
+material_subcontractor_quotes: [ ... ]   # per Section F — owned by THIS prompt (materials / manufactured items only)
+                                         # labour & access quotes are owned by prompt 06 under subcontractor_priced_works
 
 system_choice_summary:
   chosen_system: "<verbatim>"
@@ -347,6 +389,11 @@ manufacturer_pricing:
 And set `extraction_meta.manufacturer_pricing.skipped: true`. Never omit your key entirely; the pricing agent relies on every key being present.
 
 ## Self-check before you finish
+- [ ] Every priced line carries `pricing_source` set to one of the six enum values; `profix_internal_estimate` lines have no source document and are surfaced as gaps in `flags_for_human_review`.
+- [ ] `is_sample_pricing: true` is set on any supplier quote showing single-unit / sample quantity (a real-order re-quote is required).
+- [ ] Where two sources price the same SKU differently, the authoritative is in `pack_sizes` and the alternates are in `pricing_alternatives[]` with `markup_vs_pack_sizes_pct` computed.
+- [ ] Context-dependent coverage is captured in `coverage_table` (e.g. slates/m² by pitch × lap; Pro-Cold top-coat by warranty tier).
+- [ ] Subcontractor quotes are in `material_subcontractor_quotes` only — labour/access quotes are step 06's territory under `subcontractor_priced_works`. No duplication.
 - [ ] Every product mentioned in any Q_ or OS_ file is in `priced_lines` with both **unit price** and **coverage**.
 - [ ] Every product in the System Spec (S_) is reconciled — either priced or in `to_confirm`.
 - [ ] `commercial_terms` carries quote date, validity, carriage thresholds, lead times, and any **future price-increase** warnings.

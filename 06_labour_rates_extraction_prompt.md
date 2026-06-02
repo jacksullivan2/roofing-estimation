@@ -65,11 +65,15 @@ A project's labour-rate inputs can sit in any of these places — never assume a
 
 ### B. Gang / contractor register (one entry per named gang)
 - Display name (e.g. `Dave Lamb`, `Steve Rawl(s)`, `Russell Cheeseman / Creative Leadwork and Roofing Ltd`, `Profix In-House`).
+- **`gang_type: <subcontractor | profix_in_house>`** — material distinction for the cost build-up:
+  - `subcontractor` — third-party gang Profix pays through CIS-applicable invoicing. The **40 % PRS O&P mark-up** applies on top of the raw rate.
+  - `profix_in_house` — Profix's own crew. CIS does not apply. O&P does **not** apply on top; the in-house rate is the all-in cost as Profix experiences it (no separate mark-up). The 27.5 % / 30 % / 35 % pricing-sheet profit margin still applies downstream.
+  Step 07 uses this flag to decide whether to apply the 40 % O&P — never apply it on top of an in-house rate.
 - Company name + VAT no + Company no (if on invoice/quote).
 - Discipline lock-in (`felt`, `asphalt`, `leadwork`, `slate-tiling`, `liquid_systems`, `multi-trade`, etc.).
 - Contact details (phone, email, address).
-- CIS registered? (Yes / No / Unknown) — derived from invoice format.
-- Default O&P mark-up applied by Profix on this gang's rates (if a Cost Notes workbook shows it — usually **40 %**).
+- CIS registered? (Yes / No / Unknown / Not applicable for in-house) — derived from invoice format.
+- Default O&P mark-up applied by Profix on this gang's rates (usually **40 %** for subcontractor; **null** for `profix_in_house`).
 - Historical-invoice average rate (if a `Russell Invoices` folder is present — compute `total_paid_gbp` and a per-job summary).
 
 ### C. Rate lines (the main payload)
@@ -85,6 +89,11 @@ For every labour rate, capture an entry of this shape:
   rate_gbp: 6.00                       # null if a range — use rate_min/rate_max instead
   rate_min_gbp: null                   # populate for ranges, e.g. £22.50 – £27.50
   rate_max_gbp: null
+  range_conditions:                    # populate when rate is a range — tells step 07 which end to pick
+                                       # e.g. "low end if loose-laid insulation; high end if mechanically-fixed"
+                                       # e.g. "low end for small areas; high end for >300 m²"
+    selects_low_end_when: "<verbatim condition or null>"
+    selects_high_end_when: "<verbatim condition or null>"
   derived_m2_rate_gbp: 8.33            # only when source unit is per_board / per_item and m² can be derived
   derived_m2_rate_note: "PIR 1.2×0.6 m board = 0.72 m² → £6 / 0.72 = £8.33 / m²"
   applies_to_substrate: "<e.g. PIR insulation board>"
@@ -186,6 +195,8 @@ For **Prelims labour** (logistics, mgmt, supervision, welfare, etc.)
 
 ### D. Subcontractor priced works (one block per Russell-style cost plan)
 
+`subcontractor_priced_works` is **this prompt's territory** — it covers specialist labour and access trades (scaffold, abseilers, leadworkers, slating gangs, plant hire). Material-side subcontractor quotes (rooflights, bespoke tapered insulation design, factory-bonded boards, AC plant relocations) are owned by **prompt 05** under `material_subcontractor_quotes`. See prompt 05 Section F for the full ownership rule.
+
 ```yaml
 subcontractor_priced_works:
   - gang: "<display name>"
@@ -233,18 +244,26 @@ historical_invoices:
     overall_job_value_gbp: <number or null>
 ```
 
-### F. Plant hire & pass-through (the £/m² that turn up in the Pricing Sheet's "Variations to original spec" section)
+### F. Plant hire & pass-through
+
+Plant-hire rates rarely live in `/Labour Rates/` itself. The common sources are:
+- A **plant-hire vendor quote** in the project folder (preferred — quote the file path as `source_doc`).
+- **Pricing Sheet "Variations to original spec" lines** (e.g. *"Wet Vac £53 pw / Extension leads £15 pw / Tranny £13 pw / Hire £73pw × 11 weeks £803 + Gas £1/m² × 560 = £1,363 / £2.45m²"*) — capture from the Pricing Sheet and `source_doc` it.
+- **Gas rates** (e.g. £1/m² torch-on) carried on the pricing sheet, even when no other plant cost is.
+- **Profix internal rate-card** entries — capture as `vendor: "Profix Internal"`.
+
+Capture every plant / pass-through cost no matter where it lives — the prompt is named "labour rates" but plant hire is the natural neighbour and step 07 expects to see it on this prompt's output, not split across two.
 
 ```yaml
 plant_hire_rates:
-  - vendor: "<e.g. Edwards Plant & Tool Hire>"
-    item: "<e.g. Wet Vac>"
-    period: "<per_day | per_week | per_month>"
+  - vendor: "<e.g. Edwards Plant & Tool Hire | Profix Internal | <plant-hire vendor>>"
+    item: "<e.g. Wet Vac | Gas (torch-on)>"
+    period: "<per_day | per_week | per_month | per_m2 | per_project>"
     rate_gbp: <number>
     project_specific: <bool>
     duration_assumed: "<e.g. 11 weeks>"
     derived_gbp_m2: <number or null>      # when the Pricing Sheet pre-computes "£X/m²" e.g. Edwards £1,363 ÷ 560 m² ≈ £2.45/m²
-    source_doc: "<file path>"
+    source_doc: "<file path — including pricing sheets and rate cards, not just /Labour Rates/ files>"
     notes: "<e.g. Gas £1/m² assumed in same line>"
 ```
 
@@ -384,22 +403,38 @@ labour_rates: { ... }             # owned by prompt 06
 ```
 
 ### Skip case
-If no labour rate documents exist in the project, **still write to the file** — set:
+If no labour rate documents exist in the project, **still write to the file**. Step 07 reacts very differently to different *kinds* of skip — a genuinely absent rate-card is a gap to fill, whereas labour rates living inside the pricing sheet are already-available data step 07 should consume from there. Capture the kind explicitly:
+
 ```yaml
 labour_rates:
   status: skipped
-  reason: "No labour rate documents present in project folder."
+  skip_kind: "<gap | embedded_elsewhere | structurally_not_applicable>"
+  reason: "<>"
+  embedded_in:                                # populate when skip_kind = embedded_elsewhere
+    - source_doc: "<e.g. Pricing Sheet workbook>"
+      source_locator: "<sheet + row range, e.g. 'PRS Pricing document option 1' R28-R58>"
+      summary: "<one-line precis of what's there — e.g. 'Dick's labour pricing, 3-man gang £660/day, per-slope days'>"
+      action_for_step_07: "<e.g. 'accept these as the authoritative labour position' | 'chase Dick for a fresh quote before lock'>"
 ```
-And set `extraction_meta.labour_rates.skipped: true`. Never omit your key entirely; the pricing agent relies on every key being present.
+
+**`skip_kind` enum**
+- `gap` — no rate-card exists in the project and rates are not embedded anywhere else. Step 07 must surface this as a `blocker` data gap.
+- `embedded_elsewhere` — rates exist but live inside another document (typically the pricing sheet, occasionally inside a subcontractor cost plan). Use `embedded_in` to point step 07 at the source. Step 07 treats this as data-available, not a gap.
+- `structurally_not_applicable` — the project's trade mix genuinely doesn't require this prompt (rare for labour; more common when an extractor is skipped because the project is e.g. natural-slate-only with no liquid waterproofing). Step 07 treats this as no constraint, not a gap.
+
+Set `extraction_meta.labour_rates.skipped: true` and `extraction_meta.labour_rates.skip_kind: "<kind>"`. Never omit your key entirely; the pricing agent relies on every key being present.
 
 ## Self-check before you finish
+- [ ] Every gang carries a `gang_type` (`subcontractor` or `profix_in_house`); in-house gangs have `default_oap_pct: null` so step 07 doesn't apply the 40 % mark-up to in-house rates.
 - [ ] Every rate line carries a `gang` and a `trade_discipline`.
-- [ ] Ranges captured as `rate_min/rate_max`, not collapsed.
+- [ ] Ranges captured as `rate_min/rate_max`, not collapsed; **`range_conditions` populated** with the conditions that select low vs high end (loose-laid vs mech-fixed, area size, etc.) so step 07 can pick.
 - [ ] `per_board` and `per_day` rates accompanied by derived `derived_m2_rate_gbp` (where computable).
 - [ ] Subby cost plans extracted line-by-line — not summarized as a single total.
 - [ ] PRS O&P mark-up (40 %) and pricing-sheet profit margins (27.5 % / 30 % / 35 %) captured in `margin_conventions`.
 - [ ] CIS / VAT treatment captured for every subby with an invoice or quote.
 - [ ] Historical invoices summed by gang (useful as a sanity-check benchmark).
+- [ ] Plant-hire rates captured from **wherever they live** — pricing-sheet variations lines and gas rates included even when no `/Labour Rates/` vendor quote exists.
+- [ ] Skip case (when used) carries an explicit `skip_kind` of `gap`, `embedded_elsewhere`, or `structurally_not_applicable`; `embedded_in[]` populated when rates live in a different document.
 - [ ] The consolidated file at `<project_folder>/_extracted/project_data.yaml` exists, contains your `labour_rates:` block, preserves other extractors' keys, and the `extraction_meta.labour_rates` sub-block is populated.
 - [ ] If the project has **no** labour-rates documents, the file still contains the skip stub described above.
 

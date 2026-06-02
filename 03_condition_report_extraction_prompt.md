@@ -61,12 +61,18 @@ For each core sample, list:
 - Layer-by-layer build-up from top to bottom, with thicknesses where given (e.g. `Waterproofing — Asphalt / Other — Screed / Deck — Concrete`; or `Liquid applied membrane / 50 mm PIR / 150 mm EPS / Concrete deck`).
 - Substrate type for new system (concrete deck, screeded concrete, timber/ply, asphalt overlay, bituminous felt overlay, metal). **This determines the primer line items** (Pro-Prime BW for asphalt, Pro Sealer WB for porous, Pro-Prime SA for self-adhesives, Cold Melt DPM Primer for new/wet concrete, Pro-Prime Epoxy for metal/painted, Pro-Prime Metal spot primer for cleats).
 
-**B.3 Observations / defects** — list each one with rough quantities where stated:
+**B.3 Observations / defects** — list each one with rough quantities where stated. Defect types fall into two broad families; either applies depending on the roof type:
+
+*Flat-roof / membrane defects:*
 - Splits, cracks, blistering, rucking in the waterproofing.
 - Slumped asphalt at level changes, steps, kerbs.
+- Worn mineral chippings (UV exposure) — exposed bitumen accelerates degradation.
 - Previous temporary repairs (mastic patches, liquid repairs, felt patches) — count if possible.
+- Unreinforced liquid repairs at abutments / details — more susceptible to cracking; flag for monitoring.
+- Incorrect felt termination (e.g. felt torched directly onto glass, sealant-only terminations) — significant weak points.
+- Open laps from UV damage.
 - Ponding water / inadequate falls / stains indicating ponding.
-- Upstand heights — record actual numbers (e.g. *"door thresholds 120–150 mm"*, *"upstands at chases 150 mm"*); compare to BS 6229 requirements (50 mm perimeter kerbs / 75 mm door thresholds / 150 mm general upstands).
+- Upstand heights — record actual numbers (e.g. *"door thresholds 120–150 mm"*); compare to BS 6229 requirements (50 mm perimeter kerbs / 75 mm door thresholds / 150 mm general upstands).
 - DPC / cavity-tray height issues (forcing sub-150 mm upstands → flag as system deviation).
 - Pipe penetrations, soil vents, AC condensate, gas pipes (each needs sealing — count them).
 - Outlets / scuppers / hopper heads — number, condition, whether replacement or CCTV survey recommended.
@@ -75,9 +81,25 @@ For each core sample, list:
 - Fall-arrest / mansafe system penetrations — to be re-detailed.
 - Rooflights — number, type, condition, replace vs retain.
 - Plant / paving / large items obstructing works (AC units, planters, satellite dishes, plant skids) — list every one; each adds cost for protection or relocation.
+- Debris in box gutters / at low points impeding drainage.
+
+*Pitched / slate / tile defects:*
+- **Nail sickness** — corroded ferrous slate nails causing widespread slipping; rust staining beneath intact slates indicates the corrosion is widespread.
+- **Slipped / broken / displaced slates** — count where possible (often "scattered across all elevations").
+- **Single-nail fixing** (sub-standard vs BS 5534:2018 which requires two nails per slate).
+- **Mortar-bedded ridge / hip tiles** with no mechanical fixing — non-compliant with BS 5534; bedding deteriorating; risk of falling masonry and water ingress.
+- **Lead flashing thermal fatigue** — over-long lead lengths (>1.5 m max) causing distortion / splits.
+- **Lead flashing pulling away** from brickwork (caused by deteriorated mortar pointing).
+- **Render / paint decay on dormers + fascias** — protective finish wearing away, bare timber exposed → moisture ingress → rot.
+- **Inconsistent / inadequate snowguards** — slates may bypass them; H&S risk.
+
+*Cross-cutting (both flat and pitched):*
 - Render / brickwork / coping / chimney defects (spalling, cracking, repointing needs, render hack-off lengths).
+- **Spalled brick** — face separating due to freeze-thaw; weakens structural integrity.
 - Adjacent windows, doors, fascias, soffits — any decoration or repair scope drawn into the works.
+- **Missing drip channel under coping** — water tracks back by capillary action → render dampness behind.
 - Asbestos register notes or suspected ACM locations.
+- Active water ingress visible internally (penetrating the structure below).
 
 **B.4 Constraints that *preclude* the standard solution**
 - Door thresholds set flush → can't add insulation without recess.
@@ -86,6 +108,15 @@ For each core sample, list:
 - Heritage / planning approval requirements (Conservation Area, Grade II Listed).
 - School / occupied residential → out-of-hours working, dust/odour controls.
 - No safe access → drone-only inspection means upstand heights and detail conditions are *not* verified; price with provisional sums.
+
+**B.4b Items the surveyor could *not* inspect** — Capture as a structured list, **not** as free-text inside `access_constraints`. Each entry: *what* wasn't inspected, *why*, *when* it can be inspected, and the *pricing impact*. This is especially important for drone-only surveys and reports that explicitly defer items "to be confirmed once scaffold is up".
+
+Examples:
+- Rooflight upstands (drone could not see from above) — inspect post-scaffold.
+- Substrate beneath felt / sarking under slate — inspect during strip-out.
+- Concealed gutter / box-gutter linings — inspect post-scaffold.
+- Compartment-wall locations (Part B — not in CR scope) — client to supply.
+- Asbestos test results — pre-strip; client duty per CR boilerplate.
 
 **B.5 Recommended works (from the CR Conclusions)**
 - Strip-and-replace vs Overlay vs Hybrid (some areas one, some the other).
@@ -166,12 +197,19 @@ project:
 
 site_wide:
   building_height_m: <max across areas, number or null>
-  exceeds_15m: <bool>            # triggers Part B BROOF(t4) zone + A2-s3,d2 substrate
+  exceeds_15m: <true | false | null>   # true = stated and exceeds; false = stated and below; null = NOT STATED in CR. Don't infer.
+                                       # When true: Part B BROOF(t4) zone + A2-s3,d2 substrate required.
   listed_building: <bool>
   listed_grade: "<I | II* | II | null>"
   conservation_area: <bool or null>
   occupied_status: "<vacant | occupied residential | occupied commercial | school>"
   access_constraints: ["<note>", ...]
+  not_inspected:                       # site-wide inspection gaps (e.g. drone-only survey)
+    - item: "<what couldn't be inspected, e.g. all roof substrates>"
+      reason: "<e.g. drone-only survey; no destructive testing>"
+      recommended_inspection_trigger: "<e.g. post-scaffold | during strip-out | pre-strip>"
+      impact_on_pricing: "<short — what this means for the price (provisional sum, etc.)>"
+      source: "CR p.<n>"
   cdm_principal_contractor_required: <bool or null>
   asbestos_register_referenced: <bool>
   bs_references: ["BS 6229:2019", "BS 5534:2018", "Approved Document B", "Approved Document L"]
@@ -206,7 +244,7 @@ areas:
             - "<Deck — Concrete>"
       substrate_for_new_system: "<concrete deck | screeded concrete | asphalt | bituminous felt | timber/ply | metal | other>"
       defects:
-        - type: "<splits | cracks | rucking | slumped asphalt at steps | temporary mastic repairs | open laps | ponding | low upstand | low DPC/cavity tray | failed pipe penetration | failed outlet | failed capping | low door threshold | spalled brick | failed render | fall-arrest penetration | lightning conductor on surface | obstructive plant | rooflight defect | flashing fatigue | other>"
+        - type: "<flat-roof: splits | cracks | rucking | slumped asphalt at steps | temporary mastic repairs | unreinforced liquid repair | incorrect felt termination | open laps | worn mineral chippings | ponding | low upstand | low DPC/cavity tray | failed pipe penetration | failed outlet | failed capping | low door threshold | flashing fatigue | obstructive plant | rooflight defect | debris in gutter | lightning conductor on surface | fall-arrest penetration | pitched: nail sickness | slipped slate | broken slate | single-nail fixing | mortar-bedded ridge/hip | snowguard inadequacy | lead overlong | lead pulling away | render decay on timber | cross-cutting: spalled brick | failed render | missing coping drip | active water ingress | other>"
           quantity: <number or null>
           unit: "<each | lm | m2 | %>"
           detail: "<short verbatim>"
@@ -221,6 +259,12 @@ areas:
       outlets_condition: "<good | poor — CCTV recommended | replace>"
       plant_to_relocate: ["<AC condenser ×2>", "<satellite dishes>", ...]
       adjacent_building_defects: ["<chimney repointing>", "<lead flashing replacement to dormers>", ...]
+      not_inspected:                                    # area-specific inspection gaps
+        - item: "<e.g. rooflight upstands | substrate beneath felt | concealed gutter linings>"
+          reason: "<e.g. drone-only; restricted access; not in CR scope>"
+          recommended_inspection_trigger: "<post-scaffold | during strip-out | pre-strip>"
+          impact_on_pricing: "<short>"
+          source: "CR p.<n>"
     constraints:
       - "<e.g. door thresholds set flush — precludes insulation>"
       - "<low cavity tray — upstand cannot reach 150 mm>"

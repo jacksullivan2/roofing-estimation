@@ -73,7 +73,7 @@ When multiple files claim to be the SoW, the **latest-dated** version wins, but 
 
 ### A. Source documents (one block per file consulted)
 - File path.
-- Document role (`canonical_sow`, `embedded_in_product_spec`, `embedded_in_pricing_sheet`, `embedded_in_tender_workbook`, `embedded_in_condition_report`, `subcontractor_cost_plan`, `email_transmittal_only`, `negotiated_revision`).
+- Document role (`canonical_sow`, `embedded_in_product_spec`, `embedded_in_pricing_sheet`, `embedded_in_tender_workbook`, `embedded_in_condition_report`, `issued_client_quote`, `subcontractor_cost_plan`, `email_transmittal_only`, `negotiated_revision`). Use `issued_client_quote` when an already-issued Profix quotation (PDF or docx, typically named `Quote_PRS<n>` or `PRS Quote No_<n>`) carries the works scope as offered to the client — it is authoritative for scope and headline price, distinct from a subcontractor cost plan.
 - Author (surveyor firm / manufacturer / subcontractor / Profix internal).
 - Document reference (e.g. `WDA-25-012`, `R001`, `J0294`).
 - Issue date + revision.
@@ -125,7 +125,9 @@ For every numbered item in the SoW, capture an entry of this shape:
     photographs: ["<e.g. 9, 10, 28>"]
     drawings: ["<e.g. Appendix 1 yellow highlight>"]
     other: ["<e.g. Photograph 66 — flat 3 cable penetration>"]
-  notes: "<extra qualifications / contractor comments from the SoW>"
+  qualifications: ["<verbatim caveat from the SoW, e.g. 'subject to site review', 'presuming free access', 'Cost provided presuming necessary scaffold and chute'>"]
+  internal_warnings: ["<verbatim Profix flag found in the source, e.g. 'NEEDS CHECKING ???', 'confirm with Dave Lamb', 'TBC by Tom (Proteus)'>"]
+  notes: "<residual one-line context — typically the source row pointer or anything that doesn't fit the three blocks above>"
   profix_amendment:                         # only when a PRS-edited column adds context
     has_amendment: <bool>
     amendment_text_verbatim: "<e.g. 'Removing, storage and replacement of plants etc for others'>"
@@ -192,13 +194,26 @@ programme:
 
 ### I. Contractor notes / general preliminaries narrative
 
-Extract the SoW's plain-English preamble text that isn't a numbered item — things the contractor must observe but won't price separately:
+Extract the SoW's plain-English preamble text that isn't a numbered item — things the contractor must observe but won't price separately. **`contractor_notes` is for surveyor- or client-issued notes** (what the contractor must observe). For Profix's own internal outstanding actions ("NEED TO CONFIRM..."), use the `internal_action_items` block in Section I2 below.
 
 ```yaml
 contractor_notes:
   - topic: "<Pricing | Access | Site Foreman | Health & Safety | Materials | Quality | Programme | Welfare | Sub-letting | Insurance | other>"
     text_verbatim: "<>"
     source_locator: "<sheet/page>"
+```
+
+### I2. Internal action items (Profix-internal outstanding actions)
+
+Pricing sheets sometimes carry a Profix-internal note flagging work that must be completed *before* the SoW can be finalised — e.g. *"NEED TO CONFIRM LABOUR RATES WITH DAVE LAMB ON MONDAY AND CHECK MATERIAL COSTS FROM TOM"*. These are **not** instructions to the contractor (they are notes by Profix to themselves) and they belong in their own block so step 07 can see what is blocking finalisation distinct from contract-side notes.
+
+```yaml
+internal_action_items:
+  - action: "<verbatim text of the outstanding action>"
+    owner: "<who needs to action it, e.g. Dave Lamb, Tom (Proteus), CA, Profix QS>"
+    deadline: "<if stated, else null>"
+    blocking_for: ["<which item refs or sections this blocks>"]
+    source_locator: "<sheet name + cell, or PDF page>"
 ```
 
 ### J. Form of Tender (when included in the SoW workbook)
@@ -239,6 +254,21 @@ revisions:
       date: "<YYYY-MM-DD>"
       reason_superseded: "<e.g. PRS amended scope after site walk>"
       diff_summary: ["<bullet of what changed>"]
+```
+
+### L2. Pricing options (when one document carries multiple priced variants)
+
+A single pricing-sheet workbook often carries **multiple options** for the same scope — different margin conventions (40 % vs 35 % on materials), different system choices (slate vs liquid overlay), or different inclusion of an optional package. These are not revisions (one is not superseded by another) and not separate scopes — they are parallel priced views of the same SoW. Capture them here so step 07 can pick the authoritative option without having to re-read the workbook.
+
+```yaml
+pricing_options:
+  - option_id: "<e.g. option_1 | option_2 | base | with_dormers>"
+    description: "<verbatim — e.g. 'PRS Pricing document option 1 — 40% material margin'>"
+    source: "<sheet name | document section>"
+    item_refs: ["<item refs scoped to this option; empty if all items apply>"]
+    differs_in: ["<what varies between this and the other options — e.g. 'profit margin 40% vs 35%', 'scope includes lead dormers'>"]
+    headline_total_gbp: <number or null>
+authoritative_option: "<option_id, or null if undecided — to be resolved by step 07>"
 ```
 
 ### M. Cross-document reconciliation
@@ -295,11 +325,16 @@ programme: { <per Section H> }
 
 contractor_notes: [ <per Section I> ]
 
+internal_action_items: [ <per Section I2> ]
+
 form_of_tender: { <per Section J> }
 
 summary: { <per Section K> }
 
 revisions: { <per Section L> }
+
+pricing_options: [ <per Section L2> ]
+authoritative_option: "<option_id or null>"
 
 reconciliation: { <per Section M> }
 

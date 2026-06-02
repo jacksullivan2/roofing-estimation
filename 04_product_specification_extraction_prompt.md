@@ -72,6 +72,16 @@ Product Specs hide in several places — never assume the folder name is the sou
 - Revision (e.g. `Rev A`, `Issue 251124`, `Tender Issue – Locked`).
 - Validity period stated (manufacturer: typically 6 months; surveyor: tender open ≥ 13 weeks).
 - Computed `valid_until` and `flag_if_outdated_for_tender_date`.
+- **Validity cross-checked against other key documents.** A manufacturer spec is only useful if it is current relative to (a) the condition report, (b) the tender target date, and (c) any client-issued tender deadline. Capture an explicit cross-check block so an expired-spec blocker can't be missed:
+  ```yaml
+  validity_vs_other_documents:
+    condition_report_date: "<YYYY-MM-DD or null>"
+    spec_expired_before_cr: <bool>                 # true if spec valid_until < CR survey date
+    tender_target_date: "<YYYY-MM-DD or null>"     # if known
+    spec_expired_before_tender: <bool or null>
+    verdict: "<current | expired_re_inspection_required | unknown>"
+    impact: "<short — e.g. 'IBG not available until re-issued'>"
+  ```
 - Total page count, and which sections are present (Preliminaries / Preambles / The Works / Summary / Form of Tender / Appendices).
 
 ### B. Manufacturer system block (only when the source is, or contains, a manufacturer spec)
@@ -192,12 +202,15 @@ approved_products:
 
 ### F. Submittal requirements (what Profix must provide)
 
+`submittals_required` is **items Profix actively produces and hands to a named addressee** (method statements, RAMS, photographic records, guarantee policies, etc.). It is **distinct from** `cross_references.requires_separate_documents` in Section H, which lists **third-party documents that the spec presumes will exist** (an independent structural engineer's report, a Fire Engineer's Part B review, the client's asbestos register). If an item is *something Profix submits*, it belongs here; if it is *something Profix relies on being provided by others*, it belongs in Section H. When a single document fits both (e.g. an asbestos register that Profix must keep on file but is supplied by the client), put it in Section H and reference it in `submittals_required.notes` rather than duplicating.
+
 ```yaml
 submittals_required:
-  - item: "<Method statement | RAMS | Scaffold design + alarm cert | Electrical install cert | BBA cert | Safe2Torch assessment | Hot Works permit | Asbestos register | CDM file | F10 notification | Product data sheets | Sample boards | Manufacturer guarantee>"
+  - item: "<Method statement | RAMS | Scaffold design + alarm cert | Electrical install cert | BBA cert | Safe2Torch assessment | Hot Works permit | Asbestos register | CDM file | F10 notification | Product data sheets | Sample boards | Manufacturer guarantee | Photographic record>"
     when: "<pre-start | weekly | on-completion | at-tender | at-mobilisation>"
     addressee: "<CA | Principal Designer | Building Control | Manufacturer>"
     source_clause: "<e.g. A33/450>"
+    notes: "<optional — e.g. 'asbestos register supplied by client (see cross_references), Profix retains a copy on site'>"
 ```
 
 ### G. Specified Exceptions (the spine of the tender Qualifications)
@@ -239,6 +252,13 @@ project:
 
 documents: [ <per Section A> ]
 
+# Top-level summary fields — these surface the spec's most consequential facts so step 07
+# does not have to drill into manufacturer_specs[] just to see whether the project is brand-locked
+# or whether the spec is current.
+is_brand_locked: <bool>                          # true if ANY manufacturer_specs entry has mandatory_brand_lock.locked = true
+spec_currency_verdict: "<current | expired_re_inspection_required | mixed | unknown>"
+spec_currency_blocker_for_guarantee: <bool>      # true if expired AND an IBG/single-point guarantee is at stake
+
 manufacturer_specs:
   - source_doc: "<file>"
     manufacturer: "<verbatim>"
@@ -247,6 +267,13 @@ manufacturer_specs:
     issued_date: "<YYYY-MM-DD>"
     validity_months: 6
     valid_until: "<YYYY-MM-DD>"
+    validity_vs_other_documents:
+      condition_report_date: "<YYYY-MM-DD or null>"
+      spec_expired_before_cr: <bool>
+      tender_target_date: "<YYYY-MM-DD or null>"
+      spec_expired_before_tender: <bool or null>
+      verdict: "<current | expired_re_inspection_required | unknown>"
+      impact: "<short>"
     guarantee:
       type: "<IBG | Single Point | Joint | Materials only>"
       years: <number>
@@ -267,14 +294,23 @@ manufacturer_specs:
       - substrate: "<concrete | asphalt | plywood | metal>"
         requirements_verbatim: ["<each clause as a string>"]
         bs_refs: ["BS 6229:2018", ...]
-    detail_dimensions:
-      upstand_min_mm: 150
-      perimeter_kerb_min_mm: 50
-      door_threshold_min_mm: 75
-      chase_depth_mm: 20
-      drip_projection_mm: 60
-      fillet_size_mm: "<e.g. 50 Rockwool Hardrock>"
-      bs_ref: "BS 6229:2018"
+    detail_dimensions:                            # structured list, not a fixed field set —
+                                                  # captures every numbered dimension the spec carries
+      - name: "<verbatim, e.g. 'upstand min', 'side lap min', 'bitumen bleed', 'pipe penetration height'>"
+        value: <number>                           # numeric value as stated
+        unit: "<mm | m | each | %>"
+        applies_to: "<verbatim — e.g. 'all upstands per BS 6229', 'torch-on membrane laps', 'capsheet upstands > 300 mm'>"
+        bs_ref: "<BS standard cited at this point, or null>"
+        source_clause: "<spec section / page>"
+      # Common dimensions to look for (capture all that are stated):
+      #   upstand min (150 mm per BS 6229)  • perimeter kerb min (50 mm)
+      #   door threshold min (75 mm)        • chase depth                  • drip projection
+      #   fillet size                       • side lap min                 • head lap min
+      #   bitumen bleed (5-10 mm guarantee req'd on torch-on)
+      #   pipe penetration height           • lap piece dimensions
+      #   sump dimensions + step-down       • vertical capsheet onto horizontal overlap
+      #   edge trim fastener centres        • ridge/hip capping width
+      #   fastener centres at upstand heights (e.g. 300 mm for >300 mm cap; 200 mm for >500 mm SA)
     codes_of_practice: ["BS 6229:2018", "BS 5534:2018", "Approved Document B", "Approved Document L", "NHBC 7.1.10"]
     safe2torch:
       torch_free_zone_mm: 900
@@ -489,6 +525,10 @@ And set `extraction_meta.product_specification.skipped: true`. Never omit your k
 - [ ] `tender_qualifications_seed` populated so the Tender agent can paste straight in.
 - [ ] Validity dates computed (manufacturer 6 mo, surveyor 13 wk) and any near-expiry flagged.
 - [ ] Coverage-rate discrepancies between spec and open quote flagged.
+- [ ] Top-level `is_brand_locked`, `spec_currency_verdict` and `spec_currency_blocker_for_guarantee` set so step 07 doesn't have to drill into `manufacturer_specs[]`.
+- [ ] `validity_vs_other_documents` populated against the project's condition-report date (and tender target date if known); an expired-before-CR spec is automatically a blocker.
+- [ ] `detail_dimensions` is a list of named entries (each with value + unit + applies_to + source_clause); every numbered dimension the spec carries is captured.
+- [ ] `submittals_required` and `cross_references.requires_separate_documents` are disjoint — see the Section F note on which goes where.
 - [ ] The consolidated file at `<project_folder>/_extracted/project_data.yaml` exists, contains your `product_specification:` block, preserves other extractors' keys, and the `extraction_meta.product_specification` sub-block is populated.
 - [ ] If the project has **no** product spec, the file still contains the skip stub described above.
 
@@ -554,8 +594,12 @@ manufacturer_specs:
         product_verbatim: "384 Blinding aggregates"
         clause: "J31/384"
     detail_dimensions:
-      upstand_min_mm: 150
-      bs_ref: "BS 6229:2018"
+      - name: "upstand min"
+        value: 150
+        unit: "mm"
+        applies_to: "all upstands per BS 6229"
+        bs_ref: "BS 6229:2018"
+        source_clause: "J31/400.110"
     codes_of_practice: ["BS 6229:2018", "Approved Document B", "Approved Document L", "NHBC 7.1.10"]
     safe2torch:
       torch_free_zone_mm: 900

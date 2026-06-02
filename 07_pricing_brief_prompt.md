@@ -197,6 +197,12 @@ pricing_brief:
               coverage_rate: "<verbatim or null>"
               unit_price_gbp: <number or null>
               waste_pct: <number or null>
+              pricing_basis: "<per_unit | per_block_lump | per_area_lump | provisional_sum | not_priced>"
+                # per_unit          : £X per m²/lm/each — the standard case
+                # per_block_lump    : a single £ for a whole package (e.g. bespoke tapered insulation scheme for one block)
+                # per_area_lump     : a single £ for a whole area (e.g. an issued client quote line per flat roof)
+                # provisional_sum   : carried as a £ allowance, executable by the CA
+                # not_priced        : labour-only line, or a pointer to a separate source
               source: "<>"
             labour:
               candidates:
@@ -226,6 +232,16 @@ pricing_brief:
       - description: "<>"
         notes: "<>"
 
+    provisional_running_total:                          # WIP roll-up so step 08 doesn't have to re-sum from the items
+      items_with_full_inputs_count: <int>               # work items where material price, coverage, labour rate and waste are all populated
+      items_with_one_or_more_gaps_count: <int>
+      sum_of_priced_items_gbp: <number or null>         # sum of every work item that has a defensible unit/lump price (excluding gaps)
+      sum_of_provisional_sums_gbp: <number or null>
+      sum_of_lump_packages_gbp: <number or null>        # block / area lumps from issued quotes or bespoke schemes
+      excluded_from_total_gbp: <number or null>         # gaps explicitly NOT in the running total — sum the £ values you didn't include
+      running_total_ex_vat_gbp: <number or null>        # the figure step 08 can use as a working headline
+      headline_basis: "<one-line description, e.g. 'Block A only; Block 2 pro-rata still to confirm'>"
+
   # ---- TASK 2: conflict resolution register ----
   conflicts_resolved:
     - field: "<e.g. Upper Roof field area>"
@@ -235,6 +251,11 @@ pricing_brief:
         - value: "<>"
           source: "<block / document>"
       resolved_value: "<the value kept in organised_data>"
+      resolution_status: "<decided | deferred_to_human | deferred_to_data>"
+        # decided         : the authority hierarchy picked a winner — `resolved_value` is the active value
+        # deferred_to_human : human input required (e.g. client picks Option 1 vs Option 2); `resolved_value` records the deferral
+        # deferred_to_data  : a missing piece of data needs to land first (e.g. post-scaffold measure); cross-link via `awaiting_gap_id`
+      awaiting_gap_id: "<gap id from data_gaps[], or null>"   # populate when resolution_status = deferred_to_data
       authority_rule: "<which hierarchy rule decided it>"
       discarded: ["<value + source>"]
       rationale: "<one sentence>"
@@ -257,11 +278,23 @@ pricing_brief:
       what_is_needed: "<>"
       likely_source: "<surveyor | manufacturer | site visit | subcontractor | client>"
       impact_if_unresolved: "<>"
-      affects_items: ["<work-item seq refs / prelim lines>"]
+      affects_items: ["<area-disambiguated keys, e.g. 'Block A:seq 2' or 'Upper Rear Flat Roof:seq 1' or 'Prelims:Scaffold'>"]
+        # Use a fully-qualified key — never bare 'seq 2' — because seq numbers are area-scoped and a bare seq
+        # cannot be resolved across multiple areas. Step 08 must be able to map every affects_items entry
+        # back to exactly one work item or prelim line.
 
   pricing_readiness:
     verdict: "<ready | ready_with_gaps | blocked>"
-    blockers: ["<gap ids that are blockers>"]
+    readiness_score:                                # quantified detail behind the verdict, so step 08 can calibrate DRAFT vs FINAL
+      total_work_items: <int>
+      items_fully_priced: <int>                     # count of items with material price + coverage + labour rate + waste all populated
+      items_with_one_input_missing: <int>
+      items_with_multiple_inputs_missing: <int>
+      pct_items_fully_priced: <number>              # 0-100
+      blocker_gap_count: <int>
+      blocker_uncertainty_count: <int>
+      major_gap_count: <int>
+    blockers: ["<gap or uncertainty ids that are blockers>"]
     summary: "<one paragraph: can the pricing activity proceed, and what must be chased first>"
 ```
 
@@ -286,7 +319,11 @@ pricing_brief: { ... }           # owned by prompt 07
 - [ ] Every `to_confirm` / `flags_for_human_review` entry from all six blocks is consolidated into `uncertainties` (or `data_gaps` if it is truly an absence), de-duplicated.
 - [ ] No invented values — unresolved figures are `null` and appear as gaps.
 - [ ] Every value in `organised_data` has a `source`.
-- [ ] `pricing_readiness.verdict` is set and consistent with the blocker count.
+- [ ] Every `work_items[].material.pricing_basis` is set; `per_block_lump` / `per_area_lump` lines have their lump £ in `unit_price_gbp` and `waste_pct: 0`.
+- [ ] Every `conflicts_resolved[]` entry has a `resolution_status`; `deferred_to_data` entries link to an `awaiting_gap_id`.
+- [ ] `provisional_running_total` is populated — `running_total_ex_vat_gbp` gives step 08 a working headline without re-summing.
+- [ ] Every `affects_items[]` entry is area-qualified (e.g. `"Block A:seq 2"`) so step 08 can resolve unambiguously.
+- [ ] `pricing_readiness.readiness_score` populated with counts; verdict consistent with `blocker_gap_count + blocker_uncertainty_count` (0 ⇒ `ready` allowed; ≥1 ⇒ `ready_with_gaps` or `blocked`).
 - [ ] The consolidated file at `<project_folder>/_extracted/project_data.yaml` contains `pricing_brief:`, preserves all other keys, and `extraction_meta.pricing_brief` is populated.
 
 ## Worked mini-example (calibration only — not a full brief)
