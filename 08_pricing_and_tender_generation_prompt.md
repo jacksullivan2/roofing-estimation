@@ -242,15 +242,28 @@ A larger variance is a finding to surface, not a value to suppress. Look first f
 - **Bundled rates are applied with `waste_pct: 0`** (waste is already in the bundled rate). If you find a bundled rate with waste applied, you've added 5–10 % of unnecessary cost.
 
 ### 5. Plausible ranges for implied per-m² rates (sanity guide, not contract)
-| System | Typical bundled £/m² (supply + install, ex VAT, ex prelims) |
-|---|---|
-| 3-layer Pro-Felt® BUR (full strip + new) | £85 – £130 / m² |
-| Pro-Cold® liquid system (full) | £60 – £110 / m² |
-| Pro-BW Plus® liquid system | £75 – £120 / m² |
-| Tapered PIR / CTF insulation | £55 – £80 / m² |
-| Natural slate roof (warm roof, strip + new) | £180 – £280 / m² |
-| Liquid waterproofing overlay only | £30 – £60 / m² |
-If the implied rate sits outside the relevant band by more than 25 %, the calculation should be re-checked even if all the other rules pass.
+
+**Picking the right band — read the SoW first.** Many liquid and slate jobs offer two very different scopes under similar-looking SoW wording. Before checking against the band table, classify the area on two questions:
+
+- **Does the SoW retain existing insulation, or call for new insulation?** Phrases like *"if substrate and insulation are suitable for overlay then proceed"*, *"overlay system to existing roof covering"*, or *"liquid overlay only"* mean **existing insulation is retained** — use the **overlay-only** band. Phrases like *"new tapered PIR / CTF insulation"*, *"strip back to deck"*, or *"warm roof build-up"* mean **new insulation is included** — use the **full system + insulation** band. The two rates differ by 3–5×, so this question matters more than any other.
+- **For slate areas — does the SoW supply new slates, or only refix existing?** Phrases like *"supply and fix new Penrhyn Heather Blue"* (full new-slate supply) vs *"refix existing slates only, provisional allowance for X new"* (refix with small supply allowance) place the area in very different bands.
+
+| System | Scope assumption | Typical bundled £/m² (supply + install, ex VAT, ex prelims) |
+|---|---|---|
+| 3-layer Pro-Felt® BUR | full strip + new system on existing deck (no new insulation) | £85 – £130 / m² |
+| 3-layer Pro-Felt® BUR | full strip + new system + **new tapered PIR / CTF insulation** | £160 – £230 / m² |
+| Pro-Cold® liquid system | overlay only — existing felt + insulation retained | £40 – £75 / m² |
+| Pro-Cold® liquid system | full system + **new PIR insulation** | £170 – £250 / m² |
+| Pro-BW Plus® liquid system | overlay only — existing substrate retained | £45 – £85 / m² |
+| Pro-BW Plus® liquid system | full system + **new PIR insulation** | £180 – £270 / m² |
+| Westwood Wecryl liquid system | overlay only on asphalt/felt | £50 – £100 / m² |
+| Westwood Wecryl liquid system | full system + new insulation | £180 – £280 / m² |
+| Tapered PIR / CTF insulation (line item, no liquid/felt) | supply + fix only | £55 – £80 / m² |
+| Natural slate roof (refix existing, small supply allowance) | strip + refix existing slates; replace ≤ 10 % | £100 – £170 / m² |
+| Natural slate roof (warm roof, full strip + new slates) | strip + supply + fix new Welsh/Penrhyn slate | £180 – £280 / m² |
+| Liquid waterproofing overlay only (generic / detail strips) | thin overlay, no insulation, minimal prep | £30 – £60 / m² |
+
+If the implied rate sits outside the relevant band by more than 25 %, the calculation should be re-checked even if all the other rules pass. **If you find yourself unsure which band applies, default to recording the ambiguity in `over_estimation_checks.findings` rather than silently picking the wrong one** — bands at 3–5× separation make a wrong pick a more dangerous error than no pick.
 
 ### 6. Record the check in the output
 Write an `over_estimation_checks` block into `generated_outputs` alongside the deliverable paths:
@@ -267,6 +280,10 @@ generated_outputs:
         implied_gbp_per_m2: <number>
         within_plausible_band: <bool>
         band_used: "<from table above>"
+        scope_classification:
+          insulation: "<existing_retained | new_included | not_applicable>"
+          slate_supply: "<refix_only | full_new_supply | not_applicable>"
+          sow_evidence: "<short quote from SoW that established the classification>"
     findings: ["<short list of variances found and how they were resolved>"]
 ```
 
