@@ -50,9 +50,30 @@ STEP 08  Generate pricing + tender (this)   → Pricing Document (.xlsx) + Tende
 7. **Use the right skills.** Build the Pricing Document with the `xlsx` skill; build the Tender Document with the `docx` skill (read each SKILL.md before building). If the project's reference tender is a PDF, still produce a `.docx` unless instructed otherwise.
 8. **Record what you produced** in `project_data.yaml` under `generated_outputs:` — see *"Output"*.
 
-## Calculation logic — Pricing Brief work item → priced row
+## Calculation logic — Pricing Brief → priced row
 
-For each `work_item` in `pricing_brief.organised_data.areas[].work_items`:
+**Critical: respect the area's `pricing_convention`.** PRS roofing tenders are typically priced as **bundled per-m² system rates** (one £/m² covers primer + AVCL + underlays + capsheet + their labour for the whole stack). Most over-counting failures in this workflow come from summing both the bundled system rate *and* the constituent layer lines that are already inside it. Step 07 sets the convention; step 08 must honour it.
+
+For each area:
+
+**A. If `pricing_convention: bundled_per_m2`**
+
+Price from `system_stacks[]` ONLY. Every `work_items[]` entry whose `material.pricing_basis: bundled_in_stack` is **audit-only** — list it on the workings sheet for traceability (so a reviewer can see what the bundled rate covers) but **do not sum it into the area total**. Per stack:
+
+```
+stack_subtotal       = bundled_rate_gbp_per_unit × quantity
+                       (no waste added; waste is implicit in a bundled rate from the reference pricing sheet)
+if margin_already_included is false:
+  stack_total        = stack_subtotal × (1 + profit_margin_pct/100)
+else:
+  stack_total        = stack_subtotal
+```
+
+Then add any non-bundled lines from `work_items[]` where `pricing_basis` is `per_unit`, `per_block_lump`, `per_area_lump` or `provisional_sum` (e.g. zinc cappings priced separately, ancillary repairs, provisional sums). Sum these with the stack totals to get the area subtotal.
+
+**B. If `pricing_convention: component_build_up`**
+
+Price every work item from its component inputs:
 
 ```
 material_unit_cost   = material.unit_price_gbp ÷ coverage         (if a coverage rate is given;
@@ -65,10 +86,17 @@ combined_unit_cost   = material_with_waste + labour_unit_cost
 item_cost_before_profit = quantity × combined_unit_cost
 item_total           = item_cost_before_profit × (1 + profit_margin_pct/100)
 ```
+
+**C. If `pricing_convention: mixed`**
+
+Apply rule A to items whose `bundled_in_stack_id` is set; apply rule B to the remaining items. **Never apply both rules to the same item.**
+
+**Margin conventions:**
 - **Prelims** use the prelims profit convention (≈ 30 %); **works** ≈ 27.5 %; **slating/tiling** ≈ 35 % — but always defer to the margin the brief carries on the item, and to the convention in the project's reference pricing sheet.
 - **Provisional sums** are carried at their stated £ figure — no margin recalculation unless the reference sheet does so.
 - The exact arithmetic (markup vs margin, where waste/rubbish columns sit) must follow the **project's reference pricing sheet**. If none exists, use the markup form above.
-- Sum item totals per area → area subtotal. Sum areas + prelims + provisional sums → **Total ex VAT**. VAT (20 %) is shown as a separate line; the tender headline is normally quoted "plus VAT".
+
+Sum item totals per area → area subtotal. Sum areas + prelims + provisional sums → **Total ex VAT**. VAT (20 %) is shown as a separate line; the tender headline is normally quoted "plus VAT".
 
 ## Deliverable 1 — The Pricing Document (workings, `.xlsx`)
 
@@ -183,17 +211,79 @@ generated_outputs: { ... }       # owned by prompt 08
 ### Present the files
 After writing, surface both deliverables to the user with their paths so they can open them.
 
+## Over-estimation check — MANDATORY before issuing either document
+
+Before declaring the Pricing Document and Tender Document complete, run the following **bundling / double-count audit**. The single most common over-pricing failure in this workflow is summing both a bundled system rate (e.g. £102.93/m² for "the whole 3-layer membrane system, supplied and installed") *and* the constituent layer lines that are already inside it (primer £2.33/m² + AVCL £9.85/m² + underlay £6.85/m² + capsheet £15.90/m² + their labour). Same materials, same labour, counted twice — an over-price of 20–40 % typical.
+
+Run every check below and report the results in `generated_outputs.over_estimation_checks[]`. If any check fails, **stop, fix the calculation, and re-run** — do not issue documents with a known double-count.
+
+### 1. No work item is summed and also bundled
+For every area where `pricing_convention` is `bundled_per_m2` or `mixed`:
+- For every `work_items[]` entry where `material.pricing_basis: bundled_in_stack`, confirm that the entry's £ contribution to the area total is **zero**. If you can find that entry's cost in the area subtotal in any form (full or partial), you have a double-count. The bundled rate in `system_stacks[]` already covers it.
+- For every `system_stacks[]` entry, confirm every `components_covered[]` seq ref corresponds to a `work_items[]` entry whose `pricing_basis` is exactly `bundled_in_stack`. If any is missing or has a different `pricing_basis`, raise the inconsistency before issuing.
+
+### 2. Cross-check against the project's reference pricing sheet
+The project's existing `pricing_sheet` (located via `file_index.by_category.pricing_sheet`) shows the rates and structure PRS actually uses for this job. After computing each area subtotal, compute the **implied £/m² rate** for the area (`area_subtotal_ex_vat ÷ area_field_area_m2`) and compare against the reference pricing sheet's per-m² rate for the equivalent works (taking the closest matching system row).
+- If the implied rate is within **±10 %** of the reference rate → pass.
+- If outside that band, investigate before issuing: it is almost always either (a) a double-count from rule 1, (b) a missing line that the reference sheet covers, or (c) a margin mis-application (markup vs margin formula). Document the cause in `over_estimation_checks[].notes` regardless of which direction the variance runs.
+
+### 3. Cross-check against any issued tender
+If the project's `file_index` has a `tender` file with non-trivial content (more than a blank template — count populated rows), treat its line items and totals as a **strong reference**. Compare:
+- Section-level totals (e.g. per-block, per-area) — within ±10 %.
+- Headline ex-VAT total — within ±10 %.
+A larger variance is a finding to surface, not a value to suppress. Look first for:
+- **Scope mismatch** — does the issued tender price *more areas* than the brief priced? (e.g. Blocks A, B and C in the tender vs Block A only in the brief.)
+- **Bundled vs itemised mismatch** — did the brief itemise what the tender bundled, or vice versa?
+- **Margin / waste convention mismatch** — is the brief applying margin twice (once in a bundled rate, once at the area total)?
+
+### 4. Sanity tests
+- **No work item appears in `components_covered[]` of two different `system_stacks[]` entries.** Each constituent belongs to exactly one bundle.
+- **Per-m² implied rates are within plausible roofing-trade ranges** for the system chosen — see `over_estimation_check_thresholds` below.
+- **Bundled rates are applied with `waste_pct: 0`** (waste is already in the bundled rate). If you find a bundled rate with waste applied, you've added 5–10 % of unnecessary cost.
+
+### 5. Plausible ranges for implied per-m² rates (sanity guide, not contract)
+| System | Typical bundled £/m² (supply + install, ex VAT, ex prelims) |
+|---|---|
+| 3-layer Pro-Felt® BUR (full strip + new) | £85 – £130 / m² |
+| Pro-Cold® liquid system (full) | £60 – £110 / m² |
+| Pro-BW Plus® liquid system | £75 – £120 / m² |
+| Tapered PIR / CTF insulation | £55 – £80 / m² |
+| Natural slate roof (warm roof, strip + new) | £180 – £280 / m² |
+| Liquid waterproofing overlay only | £30 – £60 / m² |
+If the implied rate sits outside the relevant band by more than 25 %, the calculation should be re-checked even if all the other rules pass.
+
+### 6. Record the check in the output
+Write an `over_estimation_checks` block into `generated_outputs` alongside the deliverable paths:
+
+```yaml
+generated_outputs:
+  # ... other fields ...
+  over_estimation_checks:
+    bundled_double_count_check: "<pass | fail — details>"
+    reference_pricing_sheet_delta_pct: <number or null>      # implied area rate vs reference rate
+    issued_tender_delta_pct: <number or null>                # ex-VAT total vs issued tender total
+    implied_per_m2_rates:
+      - area: "<>"
+        implied_gbp_per_m2: <number>
+        within_plausible_band: <bool>
+        band_used: "<from table above>"
+    findings: ["<short list of variances found and how they were resolved>"]
+```
+
 ## Self-check before you finish
 - [ ] The `pricing_readiness.verdict` was read and the document state (final / draft / blocked) matches it.
 - [ ] The project's reference `pricing_sheet` and `tender` were located via `file_index` and their formats mirrored (or generic fallback used and noted).
-- [ ] Every priced row traces to a `pricing_brief` work item; no invented figures.
+- [ ] **Pricing convention applied correctly** — for `bundled_per_m2` and `mixed` areas, `system_stacks[]` is the priced source and `bundled_in_stack` work items contributed **zero** to the area total.
+- [ ] Every priced row traces to a `pricing_brief` work item or system stack; no invented figures.
+- [ ] **Over-estimation check (every rule 1–5 above) was run and passed**, or the variance was investigated and explained in `over_estimation_checks.findings`.
 - [ ] The Pricing Document shows the full build-up: quantities, unit rates, material cost, waste, labour, margin, item totals, area subtotals, prelims, provisional sums, Total ex VAT, VAT, Total inc VAT.
+- [ ] Items marked `bundled_in_stack` appear on the workings sheet for audit but are clearly labelled as "covered by [stack name] — not separately billed".
 - [ ] The Pricing Document has a clearly headed **Assumptions** section covering every uncertainty and gap-resolved-by-assumption.
 - [ ] The Tender Document carries the full Profix letterhead, plain-English works description by section, section-level costs "plus VAT", qualifications, guarantee statement, MD sign-off, and trade accreditations.
 - [ ] The Tender Document exposes **no** margins, labour rates, supplier costs, or internal workings.
 - [ ] The Tender total ex VAT **equals** the Pricing Document total ex VAT.
 - [ ] Both files are saved in `<project_folder>/_output/` (with `DRAFT_` prefix if not final).
-- [ ] `generated_outputs:` is written into `project_data.yaml`, other keys preserved, `extraction_meta.generated_outputs` populated.
+- [ ] `generated_outputs:` is written into `project_data.yaml` (including `over_estimation_checks`), other keys preserved, `extraction_meta.generated_outputs` populated.
 - [ ] Both files have been presented to the user.
 
 ## Worked mini-example (calibration only — not a full output)

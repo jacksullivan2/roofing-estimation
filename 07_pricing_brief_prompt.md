@@ -44,7 +44,16 @@ Each extraction block also carries its own `flags_for_human_review` and `to_conf
 6. **Never invent a value.** If reconciliation cannot produce a number, the field stays `null` and becomes a gap. Do not average conflicting quantities, do not guess an area.
 7. **Multiple labour rates for one task are a *choice*, not a conflict.** Surface all candidate gangs/rates on the work item; only flag a conflict when two sources disagree on a *fact* (an area, a coverage rate, a warranty period, a price for the same SKU).
 8. **Trace everything.** Every value in the brief carries a `source` pointing back to the originating block and document (e.g. `condition_report.areas[0].field_area_m2` / `SoW item 4.07`). The pricing agent and the human reviewer must be able to audit every figure.
-9. **Output is written to the consolidated project document** — see *"Output"* below. Do not return the brief as a chat response.
+9. **Detect the project's pricing convention before you organise.** PRS roofing tenders are typically priced as **bundled per-m² system rates** (one £/m² covering primer + AVCL + underlays + capsheet + their labour as a single line — e.g. *"NFRC roofer to install 3-layer Pro-Felt BUR @ £102.93/m²"*). Some projects itemise every layer instead. Open the project's reference `pricing_sheet` (via `file_index.by_category.pricing_sheet`) and inspect its structure:
+   - One per-m² rate per *system* (e.g. £102.93/m² for the whole membrane stack, £66.65/m² for the whole tapered insulation system) ⇒ `pricing_convention: bundled_per_m2`.
+   - Separate per-m² rates for *each layer* (primer / AVCL / underlay / capsheet / adhesive lines) ⇒ `pricing_convention: component_build_up`.
+   - A mix ⇒ `pricing_convention: mixed`.
+
+   When the convention is bundled, capture the bundled rates as `system_stacks[]` entries on the area and mark every constituent `work_items[]` entry with `material.pricing_basis: bundled_in_stack` and `bundled_in_stack_id: <stack_id>`. **The constituent items still appear in `work_items` for audit and installation-sequence traceability, but they are not summed by step 08 — that would double-count against the bundled rate.** This is the single most common over-counting failure mode in PRS pricing; the next prompt downstream (step 08) explicitly checks for it.
+
+   **When in doubt, default to `bundled_per_m2`** — it is the PRS roofing convention.
+
+10. **Output is written to the consolidated project document** — see *"Output"* below. Do not return the brief as a chat response.
 
 ## Authority hierarchy — how to resolve conflicts
 
@@ -185,6 +194,36 @@ pricing_brief:
         system: "<verbatim>"
         field_area_m2: <number or null>
         detail_upstand_lm: <number or null>
+        pricing_convention: "<bundled_per_m2 | component_build_up | mixed>"
+          # Detects how this area is priced on the project's *existing* reference pricing sheet.
+          # bundled_per_m2  : the pricing sheet uses combined per-m² rates that cover WHOLE SYSTEMS
+          #                   (e.g. "NFRC accredited roofer to install 3-layer Pro-Felt BUR — £102.93/m²"
+          #                   covers primer + AVCL + 2 underlays + capsheet + their labour as one line).
+          #                   Step 08 prices from `system_stacks` below, NOT by summing every work_item.
+          # component_build_up : the pricing sheet itemises every layer with its own £/m² (primer £2.33,
+          #                   AVCL £9.85, underlay £6.85, capsheet £15.90, plus separate labour lines).
+          #                   Step 08 sums `work_items` for the area total.
+          # mixed           : some lines are bundled, others are itemised — both `system_stacks` and the
+          #                   non-bundled `work_items` are priced; per-item `pricing_basis: bundled_in_stack`
+          #                   marks the items absorbed by a bundle.
+          #
+          # **PRS roofing tenders default to bundled_per_m2.** When in doubt — bundled.
+          # Detect by reading the project's reference pricing_sheet from file_index.by_category.pricing_sheet:
+          #   - one per-m² rate per system (e.g. "Pro-Felt BUR 3-layer @ £102.93/m²") ⇒ bundled_per_m2
+          #   - separate lines for primer, AVCL, underlay, capsheet ⇒ component_build_up
+          #   - mixture ⇒ mixed
+
+        system_stacks:                            # populate when pricing_convention is bundled_per_m2 or mixed
+          - stack_id: "<e.g. membrane_stack | insulation_stack | finish_stack | strip_stack>"
+            description: "<verbatim from reference pricing sheet — e.g. 'NFRC accredited roofer to clean, dry, prime and lay 3-layer Pro-Felt BUR system'>"
+            components_covered: ["<seq refs of work_items folded into this stack — those items get pricing_basis: bundled_in_stack>"]
+            bundled_rate_gbp_per_unit: <number>   # the all-in rate from the reference pricing sheet (covers materials + labour for the whole stack)
+            unit: "<m² | lm>"
+            quantity: <number>
+            bundled_total_gbp: <number>           # rate × qty — this is the figure step 08 should bill
+            margin_already_included: <bool>       # true if the rate already carries Profix margin; false if margin is applied at total
+            source: "<file path : sheet : row>"
+
         work_items:
           - seq: <int>                       # installation sequence position
             stage: "<strip | prep | primer | avcl | insulation | membrane_base | reinforcement | capsheet_topcoat | finish | detail_upstand | trim_termination | ancillary_repair>"
@@ -197,12 +236,17 @@ pricing_brief:
               coverage_rate: "<verbatim or null>"
               unit_price_gbp: <number or null>
               waste_pct: <number or null>
-              pricing_basis: "<per_unit | per_block_lump | per_area_lump | provisional_sum | not_priced>"
-                # per_unit          : £X per m²/lm/each — the standard case
-                # per_block_lump    : a single £ for a whole package (e.g. bespoke tapered insulation scheme for one block)
-                # per_area_lump     : a single £ for a whole area (e.g. an issued client quote line per flat roof)
-                # provisional_sum   : carried as a £ allowance, executable by the CA
-                # not_priced        : labour-only line, or a pointer to a separate source
+              pricing_basis: "<per_unit | per_block_lump | per_area_lump | provisional_sum | not_priced | bundled_in_stack>"
+                # per_unit              : £X per m²/lm/each — the standard case
+                # per_block_lump        : a single £ for a whole package (e.g. bespoke tapered insulation scheme for one block)
+                # per_area_lump         : a single £ for a whole area (e.g. an issued client quote line per flat roof)
+                # provisional_sum       : carried as a £ allowance, executable by the CA
+                # not_priced            : labour-only line, or a pointer to a separate source
+                # bundled_in_stack      : this item's cost is INCLUDED in a system_stacks[] entry above —
+                #                          DO NOT price separately. The item exists for audit / installation-
+                #                          sequence traceability only. Step 08 must skip these when summing
+                #                          area totals, or it will double-count against the bundled rate.
+              bundled_in_stack_id: "<stack_id from system_stacks[], when pricing_basis = bundled_in_stack; else null>"
               source: "<>"
             labour:
               candidates:
@@ -320,6 +364,7 @@ pricing_brief: { ... }           # owned by prompt 07
 - [ ] No invented values — unresolved figures are `null` and appear as gaps.
 - [ ] Every value in `organised_data` has a `source`.
 - [ ] Every `work_items[].material.pricing_basis` is set; `per_block_lump` / `per_area_lump` lines have their lump £ in `unit_price_gbp` and `waste_pct: 0`.
+- [ ] Every area has a `pricing_convention` set. For `bundled_per_m2` / `mixed`, `system_stacks[]` is populated; every `work_items[]` entry whose cost is absorbed into a bundle is marked `pricing_basis: bundled_in_stack` with a `bundled_in_stack_id` that matches a real `system_stacks[].stack_id`. **No work item is both itemised AND included in a bundle** — that is the double-count step 08 will reject.
 - [ ] Every `conflicts_resolved[]` entry has a `resolution_status`; `deferred_to_data` entries link to an `awaiting_gap_id`.
 - [ ] `provisional_running_total` is populated — `running_total_ex_vat_gbp` gives step 08 a working headline without re-summing.
 - [ ] Every `affects_items[]` entry is area-qualified (e.g. `"Block A:seq 2"`) so step 08 can resolve unambiguously.
