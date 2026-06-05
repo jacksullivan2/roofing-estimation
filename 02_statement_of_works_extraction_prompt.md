@@ -134,7 +134,11 @@ For every numbered item in the SoW, capture an entry of this shape:
     excluded_from_profix_scope: <bool>
   source_doc: "<file path>"
   source_locator: "<sheet name + cell, or PDF page>"
+  source_excerpt: "<short verbatim quote (≤ 25 words) from the SoW that anchors this item — the exact phrase that named the lead grade, the system, the quantity, the standard, etc. e.g. 'install Code 4 stepped lead cover flashings chased into the brickwork'>"
+  reasoning: "<one-line plain-English note explaining how the values were derived from the excerpt — e.g. 'Lead grade Code 4 read directly from SoW clause 3.47; quantity 7lm derived from architect drawing scale + roof perimeter'>"
 ```
+
+**Citation discipline (mandatory for every item):** every field that names a product/grade/code/standard/quantity must be defensible from the `source_excerpt`. If the SoW does not explicitly state the value (e.g. you've inferred a quantity from a drawing or photo), set `source_doc` to that secondary source AND record an `internal_warnings` line flagging the inference. Step 08 will surface `source_excerpt` and `reasoning` verbatim in the generated Pricing Document's Reasoning column, so quotes should be precise and short.
 
 ### D. Section / area roll-up
 

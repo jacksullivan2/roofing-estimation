@@ -105,6 +105,8 @@ For every labour rate, capture an entry of this shape:
   source_label_verbatim: "<sheet/cell or page/line where the rate was found>"
   source_doc: "<file path>"
   source_page_or_sheet: "<page n or sheet name>"
+  source_excerpt: "<short verbatim quote (≤ 25 words) from the rate-card cell or invoice line — the exact text PRS used to set this rate. e.g. 'Steve Rawls — strip felt + lay BUR + insulation £42/m² (all-in, 150m² Tradewinds)'. Step 08 surfaces this in the Pricing Document's Reasoning column.>"
+  reasoning: "<one-line note — e.g. 'Selected as recommended gang on the basis of prior Tradewinds project; range condition: low-end applies on areas > 200m²'>"
   is_derived_with_oap: false            # true for Cost Notes / PRS O&P workings
   oap_applied_pct: null                 # populate when is_derived_with_oap = true
   notes: "<e.g. 'All-in rate Steve Rawls gave for ~150 m² roof'>"

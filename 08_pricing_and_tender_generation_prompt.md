@@ -107,8 +107,20 @@ Mirror the project's reference `pricing_sheet`. When there is none, use this str
 **Prelims block** — one row per standard PRS prelim line: Logistics, Scaffold, Management / Supervision, Safety requirements, Site Office overheads, Welfare facilities, Health & Safety, Signage, Vehicle costs, Delivery costs, Skips. Each with its cost and the margin applied.
 
 **Per-area works blocks** — one block per area, items in installation sequence, with the full PRS column set seen on real sheets:
-`Item | Description | Qty | Unit | Combined Material Cost | Waste % | Rubbish | Combined Labour Rate | Subby/Labour Price | Labour & Materials Cost (per m²/lm) | Profit Margin | Profix Cost Before Profit | PRS Profit | Total Item Cost`
+`Item | Description | Qty | Unit | Combined Material Cost | Waste % | Rubbish | Combined Labour Rate | Subby/Labour Price | Labour & Materials Cost (per m²/lm) | Profit Margin | Profix Cost Before Profit | PRS Profit | Total Item Cost | Reasoning / Source`
 Include the per-area quantity strip the reference sheets carry (Labour area m², Field area liquid m², Detail lm × upstand mm).
+
+**Reasoning / Source column — MANDATORY.** Every priced row must carry a non-empty Reasoning / Source cell. The cell should be a single paragraph (one to three short sentences, max ~80 words) that:
+1. Names the **source document(s)** the price/qty/spec came from — using the short filename + locator (e.g. *"SoW Section 4 row 18; Pricing_Sheet_Final row 42"*).
+2. **Quotes the source excerpt verbatim** — short (≤ 25 words) and lifted from `citation_chain.scope_source.source_excerpt` (or the equivalent material/labour/quantity source field) in the `pricing_brief`. This is what shows where e.g. *"Code 4 cover flashings"* came from.
+3. **Explains the choice in one line** — derived from `citation_chain.reasoning` or `system_stacks[].citation_chain.reasoning`. e.g. *"Code 4 selected over Code 5 per surveyor SoW 4.18; quantity 75lm read directly from Pricing Sheet build-up row 42."*
+
+When the citation chain is missing (e.g. a value was derived from an inference or a benchmark rather than a quoted source), the cell must START with `INFERRED:` and explain the inference. Do not leave the cell blank, and never invent a citation. If the upstream brief has no citation_chain for an item, write `INFERRED — no upstream citation; rate carried from <comparable project>` and add an entry to the Assumptions sheet.
+
+Worked example for a lead-works row in the Pricing Document:
+| … | Description | Qty | Unit | … | Total | Reasoning / Source |
+|---|---|---:|---|---|---:|---|
+| … | Code 4 stepped cover flashings to abutments | 75 | lm | … | £4,959.68 | SoW 3.47 names *"Code 4 stepped lead cover flashings chased out of the brickwork"*. Quantity 75 lm taken from Pricing_Sheet_Final row 42 (*"75lm × 150mm co4 @ £9.35/lm / lead mastic £4.50/lm"*). Labour Russell Cheeseman gang @ £32/lm — same row. 40% works margin applied per project convention. |
 
 **Provisional sums** — listed with their £ figures and what each covers.
 
@@ -144,6 +156,7 @@ Mirror the project's reference `tender`. When there is none, use this structure 
 - **Optional / alternative items** — any options, each separately costed (*"Cost for items above £X plus VAT"*).
 - **Itemised costs** — where the SoW/survey itemises (e.g. flat roofs priced per survey item), list each item with its cost.
 - **Qualifications** — a bulleted list of caveats and exclusions. Source these from: the product spec's *Specified Exceptions*, the SoW qualifications, and the client-facing assumptions from the brief. Typical Profix qualifications: *"Cost provided for items above only — [excluded work] for others"*, *"Cost provided presuming free access to place of works"*, *"Cost based on information received without site access"*, *"Necessary alterations to thresholds to be complete before our works commence"*, *"Please give as much notice as possible"*.
+  - **Each qualification that pins a specification choice MUST carry a short source reference** in parentheses at the end. This is the client-facing version of the Pricing Document's Reasoning column — same provenance, sanitised for client view (no internal margins, no supplier costs). Examples: *"Lead grade Code 4 per surveyor specification clause 4.18"*; *"Bauder Total Roof System Plus per Bauder Survey Report B260656/1 dated 28 Jan 2026"*; *"Slate refix only (no full strip) per SoW 5.1"*. The reference identifies the source document + clause/section so the client can verify, but does not need to include the verbatim excerpt (that belongs in the Pricing Document's Reasoning column).
 - **Guarantee statement** — the warranty offered (e.g. *"All cold applied liquid waterproofing works are covered by Manufacturers & Workmanship Guarantee"*, or the 10/20/25-year period from the spec).
 - **Sign-off** — *"Quote provided by:"* Damien Sullivan, Managing Director, Profix Roofing Services Ltd, with mobile (07946543082), office (01992 469649), info@profixroofingservices.com, www.profixroofingservices.com.
 - **Accreditations** — *"Profix Roofing Services Ltd are approved contractors and therefore are annually audited by the following trade associations:"* NFRC (National Federation of Roofing Contractors), LRWA (Liquid Roofing & Waterproofing Association), Competent Roofer, CHAS (Health & Safety).
@@ -186,6 +199,14 @@ generated_outputs:
     - section: "<e.g. Scaffold | Pitched Roof | Lower Roof>"
       cost_ex_vat_gbp: <number>
   outstanding_gaps_blocking_final: ["<gap ids, if any>"]
+  reasoning_column_audit:                       # MANDATORY — confirms every priced row carries provenance
+    total_priced_rows: <int>
+    rows_with_full_citation: <int>             # citation_chain present in upstream brief AND surfaced in cell
+    rows_marked_inferred: <int>                 # INFERRED prefix used (acceptable when no upstream citation exists)
+    rows_with_blank_reasoning: <int>            # MUST be zero before issue
+    sample_excerpts:                            # 3-5 representative cells, for human spot-check
+      - row: "<e.g. Block A — Code 4 cover flashings>"
+        cell_text: "<the actual Reasoning / Source cell content>"
 
 extraction_meta:
   generated_outputs:
@@ -294,6 +315,8 @@ generated_outputs:
 - [ ] Every priced row traces to a `pricing_brief` work item or system stack; no invented figures.
 - [ ] **Over-estimation check (every rule 1–5 above) was run and passed**, or the variance was investigated and explained in `over_estimation_checks.findings`.
 - [ ] The Pricing Document shows the full build-up: quantities, unit rates, material cost, waste, labour, margin, item totals, area subtotals, prelims, provisional sums, Total ex VAT, VAT, Total inc VAT.
+- [ ] **The Reasoning / Source column is populated for every priced row.** Each cell names the source document(s) + locator, quotes the upstream `source_excerpt` verbatim, and gives a one-line explanation of the choice. Any cell missing a citation is prefixed with `INFERRED:` and has a matching entry on the Assumptions sheet. No blank cells.
+- [ ] Every qualification in the Tender Document that pins a specification choice (lead code, system name, area treatment, slate supply convention) carries a source reference in parentheses (e.g. *"per surveyor SoW clause 4.18"*).
 - [ ] Items marked `bundled_in_stack` appear on the workings sheet for audit but are clearly labelled as "covered by [stack name] — not separately billed".
 - [ ] The Pricing Document has a clearly headed **Assumptions** section covering every uncertainty and gap-resolved-by-assumption.
 - [ ] The Tender Document carries the full Profix letterhead, plain-English works description by section, section-level costs "plus VAT", qualifications, guarantee statement, MD sign-off, and trade accreditations.

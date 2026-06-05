@@ -116,6 +116,8 @@ For every priced product, capture an entry of this shape:
   notes: "Self-adhesive — requires Pro-Prime SA not Pro-Prime Bitumen"
   source_doc: "<file path>"
   source_page: <int>
+  source_excerpt: "<short verbatim quote (≤ 25 words) — the exact pricing-table row or line that gives this unit price. e.g. 'Pro-Felt Ultima Plus Underlay Sanded — 7.5m × 1m roll — £482.16'. Step 08 surfaces this in the Pricing Document's Reasoning column.>"
+  reasoning: "<one-line note — e.g. 'Unit price taken from the project-specific Q_ quote (preferred over standing OS_ schedule per authority hierarchy)'>"
 ```
 
 **`pricing_source` enum — what each value means**

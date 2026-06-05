@@ -223,6 +223,20 @@ pricing_brief:
             bundled_total_gbp: <number>           # rate × qty — this is the figure step 08 should bill
             margin_already_included: <bool>       # true if the rate already carries Profix margin; false if margin is applied at total
             source: "<file path : sheet : row>"
+            citation_chain:                       # tracks where every part of the stack came from — step 08 prints this in the Reasoning column
+              system_choice:
+                source_doc: "<spec file>"
+                source_locator: "<clause / page>"
+                source_excerpt: "<verbatim — e.g. 'Bauder Total Roof System Plus — KARAT cap + KSA DUO 35 underlayer + 120mm PIR + KSD FBS AVCL'>"
+              quantity_source:
+                source_doc: "<SoW / drawing / measured survey>"
+                source_locator: "<page / row / drawing ref>"
+                source_excerpt: "<verbatim — e.g. 'Field area 560m²; detail upstand 125 lm @ 250mm'>"
+              rate_source:
+                source_doc: "<pricing sheet / manufacturer quote / labour rates file>"
+                source_locator: "<sheet : row>"
+                source_excerpt: "<verbatim — e.g. 'Combined £/m² 167.06 — Pro-Felt BUR full system, ref project Pricing_Sheet row 50'>"
+              reasoning: "<one-line — why this bundled rate / quantity / system was selected; e.g. 'Bauder mandates 25-year IBG via this exact system; rate carried through from comparable Tradewinds project where same system used'>"
 
         work_items:
           - seq: <int>                       # installation sequence position
@@ -264,6 +278,24 @@ pricing_brief:
               sow_ref: "<or null>"
               cr_ref: "<or null>"
               spec_ref: "<or null>"
+            citation_chain:                          # pulled through from the underlying extraction blocks; step 08 surfaces this in the Reasoning column
+              scope_source:
+                source_doc: "<SoW / spec file that NAMED this work item>"
+                source_locator: "<clause / row / page>"
+                source_excerpt: "<verbatim quote that anchors the line — e.g. 'install Code 4 stepped lead cover flashings chased into the brickwork'>"
+              quantity_source:
+                source_doc: "<SoW / drawing / pricing sheet>"
+                source_locator: "<>"
+                source_excerpt: "<verbatim — e.g. '75lm × 150mm Code 4 @ £9.35lm / lead mastic £4.50lm'>"
+              material_rate_source:
+                source_doc: "<manufacturer quote / pricing sheet>"
+                source_locator: "<>"
+                source_excerpt: "<verbatim — e.g. 'Code 4 lead — £9.35/lm + mastic £4.50/lm — 75 lm'>"
+              labour_rate_source:
+                source_doc: "<labour rate card / pricing sheet>"
+                source_locator: "<>"
+                source_excerpt: "<verbatim — e.g. 'Felt works labour Stuart Paton @ £63.32/m² rounded to £70/m²'>"
+              reasoning: "<one-line — explains how the rate/qty/spec were derived from the cited excerpts. e.g. 'Code 4 selected (not Code 5) per SoW 4.18; quantity 75lm read directly from Pricing Sheet build-up row 42; rate £9.35/lm sourced from same row.'>"
             data_gaps: ["<gap ids affecting this item>"]
         area_provisional_sums:
           - description: "<>"

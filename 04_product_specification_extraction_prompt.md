@@ -285,6 +285,8 @@ manufacturer_specs:
         clause: "<e.g. J41.7/300>"
         coverage_or_size: "<verbatim>"
         warranty_tier_tied_to: "<e.g. 20 yr | null>"
+        source_excerpt: "<short verbatim quote (≤ 25 words) from the spec that names this product / grade / code / coverage. e.g. 'BauderPIR FA G16 Tapered Insulation — 120mm — foil-faced, shaped for drainage falls'. Step 08 surfaces this in the Pricing Document's Reasoning column.>"
+        reasoning: "<one-line note — why this product is in the build-up at this layer. e.g. 'Layer 3 — primary thermal insulation; Bauder spec mandates this exact product for the 25-year guarantee'>"
     coverage_rates:
       - product: "<name>"
         rate_verbatim: "<e.g. 'smooth 2 L/m² / rough 2.5 L/m²'>"

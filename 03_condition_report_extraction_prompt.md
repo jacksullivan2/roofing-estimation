@@ -218,6 +218,15 @@ site_wide:
       amount_gbp: <number or null>
       source: "CR p.<n> — '<quote>'"
 
+# Citation discipline — every `source:` field above should follow the
+# format `<doc>:<locator> — "<short verbatim excerpt (≤ 25 words)>"`. The
+# verbatim excerpt is what step 08 will quote in the Pricing Document's
+# Reasoning column, so quotes should be precise and short. If a finding is
+# INFERRED (e.g. drone-only survey — defect inferred from photograph rather
+# than stated in text), prefix the excerpt with `INFERRED: …` so the
+# downstream reasoning column shows the inference rather than a direct
+# quote.
+
 areas:
   - label: "<e.g. Upper Roof>"
     building_type: "<Residential | Commercial | Mixed | School | Listed | Other>"
