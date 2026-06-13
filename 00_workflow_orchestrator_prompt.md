@@ -14,6 +14,7 @@ STEP 04  Product Specification      04_product_specification_extraction_prompt.m
 STEP 05  Manufacturer Pricing       05_manufacturer_pricing_extraction_prompt.md → manufacturer_pricing
 STEP 06  Labour Rates               06_labour_rates_extraction_prompt.md         → labour_rates
 STEP 07  Pricing Brief              07_pricing_brief_prompt.md                   → pricing_brief
+STEP 07b Project Context Addition   Project Context Addition.md                  → pricing_brief (refined) + extraction_meta.project_context_addition
 STEP 08  Pricing & Tender           08_pricing_and_tender_generation_prompt.md   → generated_outputs + 2 files
 ```
 Every step reads and writes one shared file: `<project_folder>/_extracted/project_data.yaml`. Each step owns exactly one top-level key and preserves all others. Step 01 creates the file; steps 02–08 append to it.
@@ -25,7 +26,7 @@ Every step reads and writes one shared file: `<project_folder>/_extracted/projec
 
 ## Rules of engagement
 
-1. **Run strictly in order.** 01 → (02 → 03 → 04 → 05 → 06) → 07 → 08. Never start a step before the previous one has finished and written its key.
+1. **Run strictly in order.** 01 → (02 → 03 → 04 → 05 → 06) → 07 → 07b → 08. Never start a step before the previous one has finished and written its key. Step 07b is run **only when the estimator has submitted a project-context payload** (i.e. `context_export()` from the Roofing Estimation app returns one or more answers, or `project_context.json` is present in `<project_folder>/_extracted/`). If no estimator context exists, skip 07b — the pricing brief from step 07 passes through to step 08 unchanged.
 2. **Extraction steps run sequentially, not in parallel.** Although steps 02–06 own different keys, run them one at a time so each reads the document the previous step just appended to. The document grows as it passes down the chain.
 3. **Only run the extraction steps the project has documents for.** After step 01, read `file_index` and decide RUN or SKIP for each of steps 02–06 (see Phase 2). This is the conditional gate the workflow hinges on.
 4. **A skipped extraction still gets a stub.** For any extraction step you do not run, write the skip stub yourself so `project_data.yaml` always carries all five extraction keys — step 07 and step 08 rely on every key being present.
@@ -141,7 +142,7 @@ condition_report: { ... }        # step 03  (or skip stub)
 product_specification: { ... }   # step 04  (or skip stub)
 manufacturer_pricing: { ... }    # step 05  (or skip stub)
 labour_rates: { ... }            # step 06  (or skip stub)
-pricing_brief: { ... }           # step 07
+pricing_brief: { ... }           # step 07 — refined in place by step 07b if estimator context exists
 generated_outputs: { ... }       # step 08
 workflow_run: { ... }            # step 00  (this orchestrator)
 ```
