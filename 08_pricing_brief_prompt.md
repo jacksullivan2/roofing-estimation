@@ -14,13 +14,13 @@ You do **not** calculate prices. You assemble, reconcile, and order the *inputs*
 
 ## Where this sits in the workflow
 ```
-STEP 01  File categorisation               → file_index
-STEP 02  Statement of Works extraction      → statement_of_works
-STEP 03  Condition Report extraction        → condition_report
-STEP 04  Product Specification extraction   → product_specification
-STEP 05  Manufacturer Pricing extraction    → manufacturer_pricing
-STEP 06  Labour Rates extraction            → labour_rates
-STEP 07  Reconcile & organise  (this prompt)→ pricing_brief
+STEP 02  File categorisation               → file_index
+STEP 03  Statement of Works extraction      → statement_of_works
+STEP 04  Condition Report extraction        → condition_report
+STEP 05  Product Specification extraction   → product_specification
+STEP 06  Manufacturer Pricing extraction    → manufacturer_pricing
+STEP 07  Labour Rates extraction            → labour_rates
+STEP 08  Reconcile & organise  (this prompt)→ pricing_brief
          ── then ──
          Pricing activity                   → reads pricing_brief, builds the Pricing Sheet & Tender
 ```
@@ -29,12 +29,14 @@ STEP 07  Reconcile & organise  (this prompt)→ pricing_brief
 One file: `<project_folder>/_extracted/project_data.yaml`. It contains:
 - `project:` — the shared header (name, address, client, contract administrator).
 - `extraction_meta:` — per-step extraction metadata, and an `extraction_meta.conflicts` list where each extractor already noted disagreements it saw with the shared header.
-- `file_index:` — step 01's categorisation, including `missing_categories`.
+- `file_index:` — step 02's categorisation, including `missing_categories`.
 - `statement_of_works:`, `condition_report:`, `product_specification:`, `manufacturer_pricing:`, `labour_rates:` — the five extraction blocks. Any of these may instead carry `status: skipped`.
 
 Each extraction block also carries its own `flags_for_human_review` and `to_confirm` lists. You consolidate all of those.
 
 ## Rules of engagement
+
+0. **Project context outranks every other source.** Before reconciling document data, read `project_context.answers[]` (written by step 01). Every estimator answer is the **authoritative ground truth** for the value it covers. Document-derived values from steps 03–07 only stand where the estimator did not answer that question. When they disagree, the estimator wins — record the conflict and move on. Project context sits at the top of the authority hierarchy below; everything else is subordinate. See also **§ Cross-check: project context coverage and de-duplication** (after authority hierarchy) — that section is a mandatory pre-output step.
 
 1. **Read the whole `project_data.yaml` first.** Understand every block, including which steps were skipped and what each `to_confirm` / `flags_for_human_review` entry says.
 2. **The pricing activity builds the PRS Pricing Sheet.** Its structure is fixed: a header, a **Prelims** block, then per-**area** works blocks in installation sequence, then **provisional sums**, then **variations / E&O**. Organise the brief to mirror exactly that, so the pricing agent can work top to bottom.
@@ -49,7 +51,7 @@ Each extraction block also carries its own `flags_for_human_review` and `to_conf
    - Separate per-m² rates for *each layer* (primer / AVCL / underlay / capsheet / adhesive lines) ⇒ `pricing_convention: component_build_up`.
    - A mix ⇒ `pricing_convention: mixed`.
 
-   When the convention is bundled, capture the bundled rates as `system_stacks[]` entries on the area and mark every constituent `work_items[]` entry with `material.pricing_basis: bundled_in_stack` and `bundled_in_stack_id: <stack_id>`. **The constituent items still appear in `work_items` for audit and installation-sequence traceability, but they are not summed by step 08 — that would double-count against the bundled rate.** This is the single most common over-counting failure mode in PRS pricing; the next prompt downstream (step 08) explicitly checks for it.
+   When the convention is bundled, capture the bundled rates as `system_stacks[]` entries on the area and mark every constituent `work_items[]` entry with `material.pricing_basis: bundled_in_stack` and `bundled_in_stack_id: <stack_id>`. **The constituent items still appear in `work_items` for audit and installation-sequence traceability, but they are not summed by step 09 — that would double-count against the bundled rate.** This is the single most common over-counting failure mode in PRS pricing; the next prompt downstream (step 09) explicitly checks for it.
 
    **When in doubt, default to `bundled_per_m2`** — it is the PRS roofing convention.
 
@@ -59,8 +61,11 @@ Each extraction block also carries its own `flags_for_human_review` and `to_conf
 
 When two or more blocks disagree on the same fact, keep the value from the **highest-ranked source** for that data type. Always record the discarded value(s).
 
+**Project context (the estimator's answers from step 01) sits above every row in this table.** Wherever a `project_context.answers[]` entry covers a fact, the estimator's answer is the authoritative value full stop — the document hierarchy below only applies when no estimator answer exists.
+
 | Data type | Authority order (highest → lowest) |
 |---|---|
+| **Any fact the estimator answered** | `project_context.answers[]` (estimator) — supersedes everything below for the fact in question |
 | Commercial / contract terms (client, CA, JCT form, insurance, programme, validity) | surveyor Statement of Works → surveyor Product Specification → condition report → file metadata |
 | Scope of work — *which* items are in scope | Statement of Works (the priced document) → surveyor spec "Part 3 The Works" → condition report recommendations |
 | Quantities & measurements (m², lm, counts, heights) | measured Statement of Works value → condition report measured value → condition report estimate → value inferred from a drawing/photo. If the SoW explicitly says "contractor to measure", there is **no** authoritative value — treat as a gap, not a conflict. |
@@ -70,6 +75,54 @@ When two or more blocks disagree on the same fact, keep the value from the **hig
 | Substrate / existing build-up / defects / condition | Condition Report (it is the survey of record) |
 | Labour rates | the latest-dated rate card; where several gangs quote the same task, this is a **choice** — list all, recommend per the labour-rates block's `recommended_rate_per_task` |
 | Provisional sums | the document that names the £ figure (usually the SoW or surveyor spec) |
+
+## Cross-check — project context coverage and de-duplication (MANDATORY before output)
+
+After you've reconciled the document blocks but **before** you write the brief, run this three-step verification. The goal is that every estimator answer is faithfully represented in the brief, every document fact that contradicts an estimator answer has been displaced (with the conflict logged), and no fact is restated in two places.
+
+### Step A — Coverage check: every estimator answer is in the brief
+
+For every entry in `project_context.answers[]`:
+1. **Locate the target field** in the brief that the answer corresponds to. (The Q&A's `feeds_step` field and the routing table at the bottom of this prompt point you to the right place.)
+2. **Confirm the answer is reflected verbatim.** Compare the brief's value against the estimator's answer text. If they match: pass. If they differ: overwrite the brief with the estimator's value, mark the field with `source: estimator_input`, attach an `estimator_question: { qid, question, answer }` block, and log the previous value + its citation under `conflicts_resolved` with `resolution: estimator_wins`.
+3. **Stamp the answer with where it was applied.** Set `project_context.answers[i].applied_at_step: "STEP 08 pricing_brief"` and `applied_to_field: "<dotted path>"` so future runs can audit.
+
+If an estimator answer has **no** routable target in the brief (e.g. the answer is about an area the documents don't mention at all), record it under `project_context.unrouted_answers[]` with a one-line reason — **never silently drop it**.
+
+### Step B — Conflict scan: every document fact that contradicts a context answer is logged and displaced
+
+For every fact in the brief that originated from a step 03–07 extraction (i.e. has a `citation_chain` pointing to an SoW / CR / spec / quote / rate card), check whether it covers the same fact as any `project_context.answers[]` entry.
+
+- **If yes and they agree:** record both citations on the field (`citation_chain` retains the document citation; add a `corroborated_by_estimator: { qid }` flag).
+- **If yes and they disagree:** the brief's active value MUST be the estimator's. Log the conflict in `conflicts_resolved` with both values, both citations, and `resolution: estimator_wins`. Preserve the document value as `previous_value` for audit.
+- **If no estimator answer covers this fact:** leave the document value as-is.
+
+### Step C — Duplicate sweep: each fact lives in exactly one place
+
+The brief is reshaped from "by source document" into "by pricing-sheet position". That reshape sometimes re-states the same value in two locations (e.g. a markup % set both on a `system_stacks[]` row and globally on `profit_margins_applied`). After Steps A and B:
+1. **Scan** for duplicate values across `project_summary`, `system_stacks[]`, `priced_items_in_brief[]`, `prelims_and_overheads`, and `profit_margins_applied`.
+2. **Pick the canonical home** (typically the most global level — a project-wide markup belongs on `profit_margins_applied`, not stamped on each row).
+3. **Replace the duplicates with references** (e.g. `markup_pct: inherits_from(profit_margins_applied.works_pct)`).
+
+Failure modes this prevents: step 09 pricing the same fact twice; conflicting values for the same fact emerging from a partial refresh; the human reviewer being unsure which copy is the source of truth.
+
+### Output of the cross-check
+
+Write a `pricing_brief.project_context_crosscheck` block recording what you did:
+
+```yaml
+project_context_crosscheck:
+  ran_at: "<ISO 8601>"
+  n_estimator_answers_seen: <int>
+  n_estimator_answers_already_matching_brief: <int>
+  n_estimator_answers_overwrote_document_value: <int>     # → also appears in conflicts_resolved
+  n_estimator_answers_filled_an_empty_field: <int>
+  n_estimator_answers_unrouted: <int>                     # → see project_context.unrouted_answers[]
+  n_duplicates_removed: <int>
+  conflicts_resolved_ids: ["<conflict_id>", ...]
+```
+
+If `n_estimator_answers_unrouted > 0`, also add a `flags_for_human_review` entry naming the unrouted qids so the orchestrator surfaces them.
 
 Special cases:
 - **Expired validity.** If a Product Specification is past its 6-month validity, or a manufacturer quote is past its 30-day validity, the value is still used but recorded as an *uncertainty* (`expired source`), not discarded.
@@ -123,13 +176,13 @@ Your brief is **not** returned as a chat response. It is written into the same s
 
 ### Top-level key you own
 **`pricing_brief:`** — never touch a key owned by another step:
-- `file_index` (prompt 01)
-- `statement_of_works` (prompt 02)
-- `condition_report` (prompt 03)
-- `product_specification` (prompt 04)
-- `manufacturer_pricing` (prompt 05)
-- `labour_rates` (prompt 06)
-- `pricing_brief` (prompt 07 — this one)
+- `file_index` (prompt 02)
+- `statement_of_works` (prompt 03)
+- `condition_report` (prompt 04)
+- `product_specification` (prompt 05)
+- `manufacturer_pricing` (prompt 06)
+- `labour_rates` (prompt 07)
+- `pricing_brief` (prompt 08 — this one)
 
 ### Procedure
 1. **Read** `<project_folder>/_extracted/project_data.yaml`; preserve every other top-level key verbatim.
@@ -143,7 +196,7 @@ Your brief is **not** returned as a chat response. It is written into the same s
 extraction_meta:
   pricing_brief:
     reconciled_at: "<ISO 8601>"
-    prompt_id: "07_pricing_brief"
+    prompt_id: "08_pricing_brief"
     conflicts_resolved_count: <int>
     uncertainties_count: <int>
     data_gaps_count: <int>
@@ -199,10 +252,10 @@ pricing_brief:
           # bundled_per_m2  : the pricing sheet uses combined per-m² rates that cover WHOLE SYSTEMS
           #                   (e.g. "NFRC accredited roofer to install 3-layer Pro-Felt BUR — £102.93/m²"
           #                   covers primer + AVCL + 2 underlays + capsheet + their labour as one line).
-          #                   Step 08 prices from `system_stacks` below, NOT by summing every work_item.
+          #                   Step 09 prices from `system_stacks` below, NOT by summing every work_item.
           # component_build_up : the pricing sheet itemises every layer with its own £/m² (primer £2.33,
           #                   AVCL £9.85, underlay £6.85, capsheet £15.90, plus separate labour lines).
-          #                   Step 08 sums `work_items` for the area total.
+          #                   Step 09 sums `work_items` for the area total.
           # mixed           : some lines are bundled, others are itemised — both `system_stacks` and the
           #                   non-bundled `work_items` are priced; per-item `pricing_basis: bundled_in_stack`
           #                   marks the items absorbed by a bundle.
@@ -220,10 +273,10 @@ pricing_brief:
             bundled_rate_gbp_per_unit: <number>   # the all-in rate from the reference pricing sheet (covers materials + labour for the whole stack)
             unit: "<m² | lm>"
             quantity: <number>
-            bundled_total_gbp: <number>           # rate × qty — this is the figure step 08 should bill
+            bundled_total_gbp: <number>           # rate × qty — this is the figure step 09 should bill
             margin_already_included: <bool>       # true if the rate already carries Profix margin; false if margin is applied at total
             source: "<file path : sheet : row>"
-            citation_chain:                       # tracks where every part of the stack came from — step 08 prints this in the Reasoning column
+            citation_chain:                       # tracks where every part of the stack came from — step 09 prints this in the Reasoning column
               system_choice:
                 source_doc: "<spec file>"
                 source_locator: "<clause / page>"
@@ -258,7 +311,7 @@ pricing_brief:
                 # not_priced            : labour-only line, or a pointer to a separate source
                 # bundled_in_stack      : this item's cost is INCLUDED in a system_stacks[] entry above —
                 #                          DO NOT price separately. The item exists for audit / installation-
-                #                          sequence traceability only. Step 08 must skip these when summing
+                #                          sequence traceability only. Step 09 must skip these when summing
                 #                          area totals, or it will double-count against the bundled rate.
               bundled_in_stack_id: "<stack_id from system_stacks[], when pricing_basis = bundled_in_stack; else null>"
               source: "<>"
@@ -278,7 +331,7 @@ pricing_brief:
               sow_ref: "<or null>"
               cr_ref: "<or null>"
               spec_ref: "<or null>"
-            citation_chain:                          # pulled through from the underlying extraction blocks; step 08 surfaces this in the Reasoning column
+            citation_chain:                          # pulled through from the underlying extraction blocks; step 09 surfaces this in the Reasoning column
               scope_source:
                 source_doc: "<SoW / spec file that NAMED this work item>"
                 source_locator: "<clause / row / page>"
@@ -308,14 +361,14 @@ pricing_brief:
       - description: "<>"
         notes: "<>"
 
-    provisional_running_total:                          # WIP roll-up so step 08 doesn't have to re-sum from the items
+    provisional_running_total:                          # WIP roll-up so step 09 doesn't have to re-sum from the items
       items_with_full_inputs_count: <int>               # work items where material price, coverage, labour rate and waste are all populated
       items_with_one_or_more_gaps_count: <int>
       sum_of_priced_items_gbp: <number or null>         # sum of every work item that has a defensible unit/lump price (excluding gaps)
       sum_of_provisional_sums_gbp: <number or null>
       sum_of_lump_packages_gbp: <number or null>        # block / area lumps from issued quotes or bespoke schemes
       excluded_from_total_gbp: <number or null>         # gaps explicitly NOT in the running total — sum the £ values you didn't include
-      running_total_ex_vat_gbp: <number or null>        # the figure step 08 can use as a working headline
+      running_total_ex_vat_gbp: <number or null>        # the figure step 09 can use as a working headline
       headline_basis: "<one-line description, e.g. 'Block A only; Block 2 pro-rata still to confirm'>"
 
   # ---- TASK 2: conflict resolution register ----
@@ -356,12 +409,12 @@ pricing_brief:
       impact_if_unresolved: "<>"
       affects_items: ["<area-disambiguated keys, e.g. 'Block A:seq 2' or 'Upper Rear Flat Roof:seq 1' or 'Prelims:Scaffold'>"]
         # Use a fully-qualified key — never bare 'seq 2' — because seq numbers are area-scoped and a bare seq
-        # cannot be resolved across multiple areas. Step 08 must be able to map every affects_items entry
+        # cannot be resolved across multiple areas. Step 09 must be able to map every affects_items entry
         # back to exactly one work item or prelim line.
 
   pricing_readiness:
     verdict: "<ready | ready_with_gaps | blocked>"
-    readiness_score:                                # quantified detail behind the verdict, so step 08 can calibrate DRAFT vs FINAL
+    readiness_score:                                # quantified detail behind the verdict, so step 09 can calibrate DRAFT vs FINAL
       total_work_items: <int>
       items_fully_priced: <int>                     # count of items with material price + coverage + labour rate + waste all populated
       items_with_one_input_missing: <int>
@@ -378,16 +431,17 @@ pricing_brief:
 ```yaml
 project: { ... }
 extraction_meta: { ... }
-file_index: { ... }              # owned by prompt 01
-statement_of_works: { ... }      # owned by prompt 02
-condition_report: { ... }        # owned by prompt 03
-product_specification: { ... }   # owned by prompt 04
-manufacturer_pricing: { ... }    # owned by prompt 05
-labour_rates: { ... }            # owned by prompt 06
-pricing_brief: { ... }           # owned by prompt 07
+file_index: { ... }              # owned by prompt 02
+statement_of_works: { ... }      # owned by prompt 03
+condition_report: { ... }        # owned by prompt 04
+product_specification: { ... }   # owned by prompt 05
+manufacturer_pricing: { ... }    # owned by prompt 06
+labour_rates: { ... }            # owned by prompt 07
+pricing_brief: { ... }           # owned by prompt 08
 ```
 
 ## Self-check before you finish
+- [ ] **Project-context cross-check completed.** `pricing_brief.project_context_crosscheck` block is populated; every `project_context.answers[]` entry has been routed into the brief (or recorded under `project_context.unrouted_answers[]`), every document fact contradicting an estimator answer has been displaced with the conflict logged, and the duplicate sweep has reduced each fact to one canonical location. **Estimator answers win on every conflict.**
 - [ ] Every one of the five extraction blocks was read; skipped blocks are listed in `steps_skipped` and their absence converted into gaps.
 - [ ] `organised_data` follows pricing-sheet order: project summary → prelims → areas (work items in installation sequence) → provisional sums → variations.
 - [ ] Every work item carries all four pricing inputs or an explicit `data_gap` for each missing one.
@@ -396,10 +450,10 @@ pricing_brief: { ... }           # owned by prompt 07
 - [ ] No invented values — unresolved figures are `null` and appear as gaps.
 - [ ] Every value in `organised_data` has a `source`.
 - [ ] Every `work_items[].material.pricing_basis` is set; `per_block_lump` / `per_area_lump` lines have their lump £ in `unit_price_gbp` and `waste_pct: 0`.
-- [ ] Every area has a `pricing_convention` set. For `bundled_per_m2` / `mixed`, `system_stacks[]` is populated; every `work_items[]` entry whose cost is absorbed into a bundle is marked `pricing_basis: bundled_in_stack` with a `bundled_in_stack_id` that matches a real `system_stacks[].stack_id`. **No work item is both itemised AND included in a bundle** — that is the double-count step 08 will reject.
+- [ ] Every area has a `pricing_convention` set. For `bundled_per_m2` / `mixed`, `system_stacks[]` is populated; every `work_items[]` entry whose cost is absorbed into a bundle is marked `pricing_basis: bundled_in_stack` with a `bundled_in_stack_id` that matches a real `system_stacks[].stack_id`. **No work item is both itemised AND included in a bundle** — that is the double-count step 09 will reject.
 - [ ] Every `conflicts_resolved[]` entry has a `resolution_status`; `deferred_to_data` entries link to an `awaiting_gap_id`.
-- [ ] `provisional_running_total` is populated — `running_total_ex_vat_gbp` gives step 08 a working headline without re-summing.
-- [ ] Every `affects_items[]` entry is area-qualified (e.g. `"Block A:seq 2"`) so step 08 can resolve unambiguously.
+- [ ] `provisional_running_total` is populated — `running_total_ex_vat_gbp` gives step 09 a working headline without re-summing.
+- [ ] Every `affects_items[]` entry is area-qualified (e.g. `"Block A:seq 2"`) so step 09 can resolve unambiguously.
 - [ ] `pricing_readiness.readiness_score` populated with counts; verdict consistent with `blocker_gap_count + blocker_uncertainty_count` (0 ⇒ `ready` allowed; ≥1 ⇒ `ready_with_gaps` or `blocked`).
 - [ ] The consolidated file at `<project_folder>/_extracted/project_data.yaml` contains `pricing_brief:`, preserves all other keys, and `extraction_meta.pricing_brief` is populated.
 
@@ -493,7 +547,7 @@ pricing_brief:
       impact_if_unresolved: "Liquid-system quantities cannot be calculated — no defensible price possible."
       affects_items: ["all Lower Roof and Upper Roof work items"]
     - id: "G3"
-      gap: "No labour rates — step 06 skipped (no labour-rate documents in project)"
+      gap: "No labour rates — step 07 skipped (no labour-rate documents in project)"
       category: "labour_rate"
       severity: "blocker"
       what_is_needed: "Labour rates for Pro-Cold / Pro-BW liquid application, mortar repair, detailing"
@@ -504,7 +558,7 @@ pricing_brief:
   pricing_readiness:
     verdict: "blocked"
     blockers: ["G1", "G3"]
-    summary: "Material products and the system decision are reconciled, but pricing is blocked: there are no measured areas (G1) and no labour rates (G3 — step 06 had nothing to extract). Both must be obtained before a defensible estimate can be produced. The manufacturer quote (U1) should also be re-confirmed for currency."
+    summary: "Material products and the system decision are reconciled, but pricing is blocked: there are no measured areas (G1) and no labour rates (G3 — step 07 had nothing to extract). Both must be obtained before a defensible estimate can be produced. The manufacturer quote (U1) should also be re-confirmed for currency."
 ```
 
 End of prompt. Write your Pricing Brief to `<project_folder>/_extracted/project_data.yaml` under the `pricing_brief:` key as described above. Do **not** return YAML in chat.

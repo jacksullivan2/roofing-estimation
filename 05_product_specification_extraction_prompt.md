@@ -28,6 +28,8 @@ Product Specs hide in several places — never assume the folder name is the sou
 
 ## Rules of engagement
 
+0. **Read `project_context.answers[]` FIRST — estimator wins on conflict.** Before reading any spec file, read the `project_context:` block written by step 01. The estimator's answers (notably `PRJ-06` "Which manufacturer system is being priced", `PRJ-07` guarantee period, `INS-02` insulation product/grade, `BUR-01` warm/cold/inverted, `FRL-02` liquid system, `FIN-01` finish & colour) outrank anything in the manufacturer or surveyor spec PDF. If the spec says one thing and the estimator says another, capture the spec verbatim under `source_doc` but add a `project_context_override` block citing the qid + answer that supersedes it. Log the conflict in `extraction_meta.conflicts` with `resolution: estimator_wins`. **Never silently overwrite the spec value** — preserve it for audit and mark the estimator's value authoritative for downstream pricing.
+
 1. **Two flavours, two outputs.** Manufacturer specs answer *"what's the system?"*. Surveyor specs answer *"what's the contract and what work is required?"*. The output schema separates them; do **not** merge.
 2. **Verbatim quotes win.** A spec sentence like *"All upstands must conform to BS 6229 and to be a Minimum 150 mm high from the finished roof level"* is enforceable on the contractor. Capture the verbatim quote, the BS reference, and the dimension.
 3. **Every numbered clause matters.** NBS clauses (A10, A20, A33, J31, J41.5, etc.) are the formal addresses the surveyor will hold the tender against. Always carry the **clause number** alongside the extracted fact.
@@ -252,7 +254,7 @@ project:
 
 documents: [ <per Section A> ]
 
-# Top-level summary fields — these surface the spec's most consequential facts so step 07
+# Top-level summary fields — these surface the spec's most consequential facts so step 08
 # does not have to drill into manufacturer_specs[] just to see whether the project is brand-locked
 # or whether the spec is current.
 is_brand_locked: <bool>                          # true if ANY manufacturer_specs entry has mandatory_brand_lock.locked = true
@@ -285,7 +287,7 @@ manufacturer_specs:
         clause: "<e.g. J41.7/300>"
         coverage_or_size: "<verbatim>"
         warranty_tier_tied_to: "<e.g. 20 yr | null>"
-        source_excerpt: "<short verbatim quote (≤ 25 words) from the spec that names this product / grade / code / coverage. e.g. 'BauderPIR FA G16 Tapered Insulation — 120mm — foil-faced, shaped for drainage falls'. Step 08 surfaces this in the Pricing Document's Reasoning column.>"
+        source_excerpt: "<short verbatim quote (≤ 25 words) from the spec that names this product / grade / code / coverage. e.g. 'BauderPIR FA G16 Tapered Insulation — 120mm — foil-faced, shaped for drainage falls'. Step 09 surfaces this in the Pricing Document's Reasoning column.>"
         reasoning: "<one-line note — why this product is in the build-up at this layer. e.g. 'Layer 3 — primary thermal insulation; Bauder spec mandates this exact product for the 25-year guarantee'>"
     coverage_rates:
       - product: "<name>"
@@ -457,11 +459,11 @@ Your extracted YAML is **not** returned as a chat response. It is written into o
 
 ### Top-level key you own
 **`product_specification:`** — never touch a key owned by another extractor:
-- `statement_of_works` (prompt 02)
-- `condition_report` (prompt 03)
-- `product_specification` (prompt 04 — this one)
-- `manufacturer_pricing` (prompt 05)
-- `labour_rates` (prompt 06)
+- `statement_of_works` (prompt 03)
+- `condition_report` (prompt 04)
+- `product_specification` (prompt 05 — this one)
+- `manufacturer_pricing` (prompt 06)
+- `labour_rates` (prompt 07)
 
 ### Procedure
 1. **Read** `<project_folder>/_extracted/project_data.yaml` if it exists; preserve every other top-level key verbatim.
@@ -486,7 +488,7 @@ project:
 extraction_meta:
   product_specification:
     extracted_at: "<ISO 8601>"
-    prompt_id: "04_product_specification"
+    prompt_id: "05_product_specification"
     source_files: ["<path>", ...]
     skipped: <bool>
     skip_reason: "<>"
@@ -501,11 +503,11 @@ extraction_meta:
 ```yaml
 project: { ... }
 extraction_meta: { ... }
-statement_of_works: { ... }       # owned by prompt 02
-condition_report: { ... }         # owned by prompt 03
-product_specification: { ... }    # owned by prompt 04
-manufacturer_pricing: { ... }     # owned by prompt 05
-labour_rates: { ... }             # owned by prompt 06
+statement_of_works: { ... }       # owned by prompt 03
+condition_report: { ... }         # owned by prompt 04
+product_specification: { ... }    # owned by prompt 05
+manufacturer_pricing: { ... }     # owned by prompt 06
+labour_rates: { ... }             # owned by prompt 07
 ```
 
 ### Skip case
@@ -527,7 +529,7 @@ And set `extraction_meta.product_specification.skipped: true`. Never omit your k
 - [ ] `tender_qualifications_seed` populated so the Tender agent can paste straight in.
 - [ ] Validity dates computed (manufacturer 6 mo, surveyor 13 wk) and any near-expiry flagged.
 - [ ] Coverage-rate discrepancies between spec and open quote flagged.
-- [ ] Top-level `is_brand_locked`, `spec_currency_verdict` and `spec_currency_blocker_for_guarantee` set so step 07 doesn't have to drill into `manufacturer_specs[]`.
+- [ ] Top-level `is_brand_locked`, `spec_currency_verdict` and `spec_currency_blocker_for_guarantee` set so step 08 doesn't have to drill into `manufacturer_specs[]`.
 - [ ] `validity_vs_other_documents` populated against the project's condition-report date (and tender target date if known); an expired-before-CR spec is automatically a blocker.
 - [ ] `detail_dimensions` is a list of named entries (each with value + unit + applies_to + source_clause); every numbered dimension the spec carries is captured.
 - [ ] `submittals_required` and `cross_references.requires_separate_documents` are disjoint — see the Section F note on which goes where.

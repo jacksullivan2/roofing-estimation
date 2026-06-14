@@ -39,6 +39,8 @@ When multiple files claim to be the SoW, the **latest-dated** version wins, but 
 
 ## Rules of engagement
 
+0. **Read `project_context.answers[]` FIRST — estimator wins on conflict.** Before you extract anything from the documents, read the `project_context:` block written by step 01. Every answer there outranks anything you find in the SoW PDF / XLSX. When a SoW item names a manufacturer / lead grade / quantity that contradicts an estimator answer (e.g. SoW says "Bauder BTRS PLUS" but estimator PRJ-06 says "Polyroof Protec"), the extracted item must record both: the verbatim SoW text in `description_verbatim`, AND a `project_context_override` block naming the answer that supersedes it. Log the conflict in `extraction_meta.conflicts` with `resolution: estimator_wins`. **Never silently overwrite the source-document value** — preserve it for audit, but mark the estimator's value as authoritative for downstream pricing.
+
 1. **Item-by-item, not paragraph-by-paragraph.** Every numbered item (1.1, 1.01, 2.04, 4.07, 6.7.1) becomes one entry in `items`. Never collapse two consecutive items into one. Sub-items (1.1.1, 1.1.2) stay nested.
 2. **Verbatim descriptions.** The surveyor wrote the words — paraphrasing changes contractual meaning. Capture the description **verbatim**, and only add a `description_short` slug if you need a 3–5-word handle for the pricing-sheet display.
 3. **Trade tagging is mandatory.** Each item belongs to one of: `roofing_waterproofing`, `slating_tiling`, `leadwork`, `mortar_pointing`, `brickwork_repair`, `render`, `decoration_internal`, `decoration_external`, `carpentry_timber`, `windows_doors`, `glazing`, `rainwater_goods`, `scaffolding_access`, `temporary_protection`, `cleaning_prep`, `demolition_disposal`, `structural`, `mechanical_electrical`, `drainage`, `landscaping`, `prelims_general`, `welfare_facilities`, `signage_traffic_management`, `health_safety`, `contingency_provisional`, `other`. Infer from keywords if the surveyor didn't tag it.
@@ -138,7 +140,7 @@ For every numbered item in the SoW, capture an entry of this shape:
   reasoning: "<one-line plain-English note explaining how the values were derived from the excerpt — e.g. 'Lead grade Code 4 read directly from SoW clause 3.47; quantity 7lm derived from architect drawing scale + roof perimeter'>"
 ```
 
-**Citation discipline (mandatory for every item):** every field that names a product/grade/code/standard/quantity must be defensible from the `source_excerpt`. If the SoW does not explicitly state the value (e.g. you've inferred a quantity from a drawing or photo), set `source_doc` to that secondary source AND record an `internal_warnings` line flagging the inference. Step 08 will surface `source_excerpt` and `reasoning` verbatim in the generated Pricing Document's Reasoning column, so quotes should be precise and short.
+**Citation discipline (mandatory for every item):** every field that names a product/grade/code/standard/quantity must be defensible from the `source_excerpt`. If the SoW does not explicitly state the value (e.g. you've inferred a quantity from a drawing or photo), set `source_doc` to that secondary source AND record an `internal_warnings` line flagging the inference. Step 09 will surface `source_excerpt` and `reasoning` verbatim in the generated Pricing Document's Reasoning column, so quotes should be precise and short.
 
 ### D. Section / area roll-up
 
@@ -209,7 +211,7 @@ contractor_notes:
 
 ### I2. Internal action items (Profix-internal outstanding actions)
 
-Pricing sheets sometimes carry a Profix-internal note flagging work that must be completed *before* the SoW can be finalised — e.g. *"NEED TO CONFIRM LABOUR RATES WITH DAVE LAMB ON MONDAY AND CHECK MATERIAL COSTS FROM TOM"*. These are **not** instructions to the contractor (they are notes by Profix to themselves) and they belong in their own block so step 07 can see what is blocking finalisation distinct from contract-side notes.
+Pricing sheets sometimes carry a Profix-internal note flagging work that must be completed *before* the SoW can be finalised — e.g. *"NEED TO CONFIRM LABOUR RATES WITH DAVE LAMB ON MONDAY AND CHECK MATERIAL COSTS FROM TOM"*. These are **not** instructions to the contractor (they are notes by Profix to themselves) and they belong in their own block so step 08 can see what is blocking finalisation distinct from contract-side notes.
 
 ```yaml
 internal_action_items:
@@ -262,7 +264,7 @@ revisions:
 
 ### L2. Pricing options (when one document carries multiple priced variants)
 
-A single pricing-sheet workbook often carries **multiple options** for the same scope — different margin conventions (40 % vs 35 % on materials), different system choices (slate vs liquid overlay), or different inclusion of an optional package. These are not revisions (one is not superseded by another) and not separate scopes — they are parallel priced views of the same SoW. Capture them here so step 07 can pick the authoritative option without having to re-read the workbook.
+A single pricing-sheet workbook often carries **multiple options** for the same scope — different margin conventions (40 % vs 35 % on materials), different system choices (slate vs liquid overlay), or different inclusion of an optional package. These are not revisions (one is not superseded by another) and not separate scopes — they are parallel priced views of the same SoW. Capture them here so step 08 can pick the authoritative option without having to re-read the workbook.
 
 ```yaml
 pricing_options:
@@ -272,7 +274,7 @@ pricing_options:
     item_refs: ["<item refs scoped to this option; empty if all items apply>"]
     differs_in: ["<what varies between this and the other options — e.g. 'profit margin 40% vs 35%', 'scope includes lead dormers'>"]
     headline_total_gbp: <number or null>
-authoritative_option: "<option_id, or null if undecided — to be resolved by step 07>"
+authoritative_option: "<option_id, or null if undecided — to be resolved by step 08>"
 ```
 
 ### M. Cross-document reconciliation
@@ -365,11 +367,11 @@ Your extracted YAML is **not** returned as a chat response. It is written into o
 
 ### Top-level key you own
 **`statement_of_works:`** — never touch a key owned by another extractor:
-- `statement_of_works` (prompt 02 — this one)
-- `condition_report` (prompt 03)
-- `product_specification` (prompt 04)
-- `manufacturer_pricing` (prompt 05)
-- `labour_rates` (prompt 06)
+- `statement_of_works` (prompt 03 — this one)
+- `condition_report` (prompt 04)
+- `product_specification` (prompt 05)
+- `manufacturer_pricing` (prompt 06)
+- `labour_rates` (prompt 07)
 
 ### Procedure
 1. **Read** `<project_folder>/_extracted/project_data.yaml` if it exists; preserve every other top-level key verbatim.
@@ -394,7 +396,7 @@ project:
 extraction_meta:
   statement_of_works:
     extracted_at: "<ISO 8601>"
-    prompt_id: "02_statement_of_works"
+    prompt_id: "03_statement_of_works"
     source_files: ["<path>", ...]
     skipped: <bool>
     skip_reason: "<>"
@@ -409,11 +411,11 @@ extraction_meta:
 ```yaml
 project: { ... }
 extraction_meta: { ... }
-statement_of_works: { ... }       # owned by prompt 02
-condition_report: { ... }         # owned by prompt 03
-product_specification: { ... }    # owned by prompt 04
-manufacturer_pricing: { ... }     # owned by prompt 05
-labour_rates: { ... }             # owned by prompt 06
+statement_of_works: { ... }       # owned by prompt 03
+condition_report: { ... }         # owned by prompt 04
+product_specification: { ... }    # owned by prompt 05
+manufacturer_pricing: { ... }     # owned by prompt 06
+labour_rates: { ... }             # owned by prompt 07
 ```
 
 ### Skip case

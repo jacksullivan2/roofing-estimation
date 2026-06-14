@@ -22,9 +22,11 @@ A typical project's manufacturer pricing folder (named `Manufactuer Products and
 | `<Product>-datasheet.pdf` (e.g. `SSQ-Del-Prado-datasheet.pdf`) | Technical datasheet for a slate / tile / membrane. **No pricing** but provides coverage (slates / m²), weight, lap, BS reference. | Use for **coverage / m² rates** only. |
 | `BBA_<cert no>_<product>.pdf` | BBA certification. No pricing, no coverage. | Note the certification for the tender qualifications, but do not extract as a priced line. |
 | `Pro-BW Catalyst Table.pdf`, `Product_Detail_*.pdf` | Technical reference tables (catalyst dosing, install details). | Use to **validate coverage / consumption** but not as a price source. |
-| Abseiler / scaffold / labour-rate quotes (`FA-<no>-Q*.pdf`, `labour_rates*.xlsx`) | Third-party priced quotations. | **Do not extract here** — these are step 06's territory (`subcontractor_priced_works`). See Section F for the ownership rule between material-side and labour-side subcontractor quotes. |
+| Abseiler / scaffold / labour-rate quotes (`FA-<no>-Q*.pdf`, `labour_rates*.xlsx`) | Third-party priced quotations. | **Do not extract here** — these are step 07's territory (`subcontractor_priced_works`). See Section F for the ownership rule between material-side and labour-side subcontractor quotes. |
 
 ## Rules of engagement
+
+0. **Read `project_context.answers[]` FIRST — estimator wins on conflict.** Before reading any quote, read the `project_context:` block written by step 01. The estimator's answers — especially `PRJ-06` "Which manufacturer system is being priced" and `COM-01` "Are preferential/negotiated material rates available" — outrank anything you find in Q_/OS_/datasheet files. If the project folder contains a Bauder Q_ quote but the estimator answered `PRJ-06: Polyroof Protec`, you extract the Bauder quote for audit but mark the Polyroof system as the authoritative one for downstream pricing via a `project_context_override` block on the affected systems. Log the conflict in `extraction_meta.conflicts` with `resolution: estimator_wins`. **Never silently overwrite the document price** — preserve it for audit, and surface the conflict.
 
 1. **Q_ trumps OS_ trumps datasheet.** Where the same product appears in multiple files, use the **bespoke Q_ price** first, then the OS_ open list, and only fall back to manufacturer datasheet / trade list if neither is present. Always record which source you used.
 2. **Quote validity matters.** Manufacturer Q_ quotes are typically **valid for 30 days** and prices are **net of VAT**. Record `quote_date`, `valid_until` (assume `quote_date + 30 days` if not stated), and `vat_treatment: "exclusive"`. If the project tender date is later than `valid_until`, raise a flag for re-quote.
@@ -84,7 +86,7 @@ For every priced product, capture an entry of this shape:
   pricing_source: "<supplier_quote | manufacturer_open_schedule | manufacturer_trade_list | profix_internal_estimate | datasheet_only_no_price | sample_unit_only>"
   is_sample_pricing: <bool>               # true when the supplier quote shows sample / single-unit quantity, not a real order quote
                                           # (e.g. JJ Roofing SalesQuotation qty=1 of each slate)
-                                          # When true, step 07 must treat this as a placeholder and seek a trade-quantity re-quote.
+                                          # When true, step 08 must treat this as a placeholder and seek a trade-quantity re-quote.
   pack_sizes:
     - pack_size: "5 L tin"
       unit_price_gbp: 60.38
@@ -116,7 +118,7 @@ For every priced product, capture an entry of this shape:
   notes: "Self-adhesive — requires Pro-Prime SA not Pro-Prime Bitumen"
   source_doc: "<file path>"
   source_page: <int>
-  source_excerpt: "<short verbatim quote (≤ 25 words) — the exact pricing-table row or line that gives this unit price. e.g. 'Pro-Felt Ultima Plus Underlay Sanded — 7.5m × 1m roll — £482.16'. Step 08 surfaces this in the Pricing Document's Reasoning column.>"
+  source_excerpt: "<short verbatim quote (≤ 25 words) — the exact pricing-table row or line that gives this unit price. e.g. 'Pro-Felt Ultima Plus Underlay Sanded — 7.5m × 1m roll — £482.16'. Step 09 surfaces this in the Pricing Document's Reasoning column.>"
   reasoning: "<one-line note — e.g. 'Unit price taken from the project-specific Q_ quote (preferred over standing OS_ schedule per authority hierarchy)'>"
 ```
 
@@ -124,7 +126,7 @@ For every priced product, capture an entry of this shape:
 - `supplier_quote` — bespoke project quote from the manufacturer or merchant (typically a `Q_` file).
 - `manufacturer_open_schedule` — standing open schedule (typically an `OS_` or `S_` open list).
 - `manufacturer_trade_list` — published trade price list (e.g. Centaur, Soprema PDFs).
-- `profix_internal_estimate` — **no manufacturer or supplier document exists for this product** in the project folder; the rate is Profix's own internal estimate carried in the pricing sheet (e.g. Cromar Vent 3 breather membrane at £3.00/m² when no Cromar quote is present). Step 07 must surface these as gaps requiring trade confirmation.
+- `profix_internal_estimate` — **no manufacturer or supplier document exists for this product** in the project folder; the rate is Profix's own internal estimate carried in the pricing sheet (e.g. Cromar Vent 3 breather membrane at £3.00/m² when no Cromar quote is present). Step 08 must surface these as gaps requiring trade confirmation.
 - `datasheet_only_no_price` — the product appears only in a technical datasheet (coverage / weight / standards) with no price; pair with a `supplier_quote` entry for the priced view.
 - `sample_unit_only` — supplier quote exists but shows sample / single-unit quantity (e.g. qty 1 of a slate at trade unit price). Set `is_sample_pricing: true`.
 
@@ -226,17 +228,17 @@ commercial_terms:
 
 | Quote nature | Owned by | Block field |
 |---|---|---|
-| Materials / manufactured items supplied by a third party (rooflights, tapered insulation design, AC plant relocations, prefabricated metalwork) | **Prompt 05 (this prompt)** | `material_subcontractor_quotes` |
-| Specialist labour and access trades (scaffold, abseilers, leadworkers, slating gangs, plant hire) | **Prompt 06 (labour rates)** | `subcontractor_priced_works` |
+| Materials / manufactured items supplied by a third party (rooflights, tapered insulation design, AC plant relocations, prefabricated metalwork) | **Prompt 06 (this prompt)** | `material_subcontractor_quotes` |
+| Specialist labour and access trades (scaffold, abseilers, leadworkers, slating gangs, plant hire) | **Prompt 07 (labour rates)** | `subcontractor_priced_works` |
 
 When a quote spans both (e.g. a scaffold quote that itemises hire-and-erect *plus* board purchase), the **predominant cost component** decides ownership; the other prompt may reference it in `notes` but does not duplicate the entry.
 
-Step 05 owns:
+Step 06 owns:
 - Tapered insulation design (Proteus — POA / bespoke scheme).
 - Bespoke manufactured items (rooflights, AC plant relocations, factory-bonded boards).
 - Specialist material supply not from the main manufacturer schedule.
 
-Step 06 owns:
+Step 07 owns:
 - Scaffold (e.g. Skyline Quote, JAB Scaffold QU2123).
 - Abseilers (FA-25410-Q1 quotes — daily/hourly rate + scope).
 - Specialist labour (Russell Cheeseman lead/zinc, Dave Lamb felt, Steve Rawls asphalt).
@@ -298,7 +300,7 @@ priced_lines_consolidated:                # de-duped across documents, Q_ price 
   catalysts_and_reactivators: [ ... ]
 
 material_subcontractor_quotes: [ ... ]   # per Section F — owned by THIS prompt (materials / manufactured items only)
-                                         # labour & access quotes are owned by prompt 06 under subcontractor_priced_works
+                                         # labour & access quotes are owned by prompt 07 under subcontractor_priced_works
 
 system_choice_summary:
   chosen_system: "<verbatim>"
@@ -330,11 +332,11 @@ Your extracted YAML is **not** returned as a chat response. It is written into o
 
 ### Top-level key you own
 **`manufacturer_pricing:`** — never touch a key owned by another extractor:
-- `statement_of_works` (prompt 02)
-- `condition_report` (prompt 03)
-- `product_specification` (prompt 04)
-- `manufacturer_pricing` (prompt 05 — this one)
-- `labour_rates` (prompt 06)
+- `statement_of_works` (prompt 03)
+- `condition_report` (prompt 04)
+- `product_specification` (prompt 05)
+- `manufacturer_pricing` (prompt 06 — this one)
+- `labour_rates` (prompt 07)
 
 ### Procedure
 1. **Read** `<project_folder>/_extracted/project_data.yaml` if it exists; preserve every other top-level key verbatim.
@@ -359,7 +361,7 @@ project:
 extraction_meta:
   manufacturer_pricing:
     extracted_at: "<ISO 8601>"
-    prompt_id: "05_manufacturer_pricing"
+    prompt_id: "06_manufacturer_pricing"
     source_files: ["<path>", ...]
     skipped: <bool>
     skip_reason: "<>"
@@ -374,11 +376,11 @@ extraction_meta:
 ```yaml
 project: { ... }
 extraction_meta: { ... }
-statement_of_works: { ... }       # owned by prompt 02
-condition_report: { ... }         # owned by prompt 03
-product_specification: { ... }    # owned by prompt 04
-manufacturer_pricing: { ... }     # owned by prompt 05
-labour_rates: { ... }             # owned by prompt 06
+statement_of_works: { ... }       # owned by prompt 03
+condition_report: { ... }         # owned by prompt 04
+product_specification: { ... }    # owned by prompt 05
+manufacturer_pricing: { ... }     # owned by prompt 06
+labour_rates: { ... }             # owned by prompt 07
 ```
 
 ### Skip case
@@ -395,7 +397,7 @@ And set `extraction_meta.manufacturer_pricing.skipped: true`. Never omit your ke
 - [ ] `is_sample_pricing: true` is set on any supplier quote showing single-unit / sample quantity (a real-order re-quote is required).
 - [ ] Where two sources price the same SKU differently, the authoritative is in `pack_sizes` and the alternates are in `pricing_alternatives[]` with `markup_vs_pack_sizes_pct` computed.
 - [ ] Context-dependent coverage is captured in `coverage_table` (e.g. slates/m² by pitch × lap; Pro-Cold top-coat by warranty tier).
-- [ ] Subcontractor quotes are in `material_subcontractor_quotes` only — labour/access quotes are step 06's territory under `subcontractor_priced_works`. No duplication.
+- [ ] Subcontractor quotes are in `material_subcontractor_quotes` only — labour/access quotes are step 07's territory under `subcontractor_priced_works`. No duplication.
 - [ ] Every product mentioned in any Q_ or OS_ file is in `priced_lines` with both **unit price** and **coverage**.
 - [ ] Every product in the System Spec (S_) is reconciled — either priced or in `to_confirm`.
 - [ ] `commercial_terms` carries quote date, validity, carriage thresholds, lead times, and any **future price-increase** warnings.

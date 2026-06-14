@@ -19,6 +19,8 @@ The project folder typically contains:
 - `manifest.json` mapping the document types.
 
 ## Rules of engagement
+0. **Read `project_context.answers[]` FIRST — estimator wins on conflict.** Before reading the CR, read the `project_context:` block written by step 01. Every estimator answer (e.g. `SUB-01` substrate, `SUB-02` substrate condition, `INS-01` insulation target, `PRJ-03` roof access/height) outranks anything the CR surveyor wrote. If the CR says one thing and the estimator says another, capture the CR text verbatim under `source` but add a `project_context_override` block citing the qid + answer that supersedes it. Log the conflict in `extraction_meta.conflicts` with `resolution: estimator_wins`. **Never silently overwrite the CR value** — preserve it for audit and mark the estimator's value authoritative for downstream pricing.
+
 1. **Read the CR end-to-end first** (including the boilerplate Preliminaries — most of it is generic, but watch for project-specific overrides such as Asbestos Register references or unusual access restrictions).
 2. **Cross-reference any number you can.** When a quantity (m², lm, height) appears in both CR and SoW, use the SoW value and note the CR figure as a corroboration; if they conflict, flag the discrepancy.
 3. **Never invent quantities.** If a field area is not stated and cannot be reasonably inferred from a drawing, photo, or written description, set the value to `null` and add a `to_confirm` note. Profix gets burned when areas are assumed.
@@ -220,7 +222,7 @@ site_wide:
 
 # Citation discipline — every `source:` field above should follow the
 # format `<doc>:<locator> — "<short verbatim excerpt (≤ 25 words)>"`. The
-# verbatim excerpt is what step 08 will quote in the Pricing Document's
+# verbatim excerpt is what step 09 will quote in the Pricing Document's
 # Reasoning column, so quotes should be precise and short. If a finding is
 # INFERRED (e.g. drone-only survey — defect inferred from photograph rather
 # than stated in text), prefix the excerpt with `INFERRED: …` so the
@@ -330,11 +332,11 @@ Your extracted YAML is **not** returned as a chat response. It is written into o
 
 ### Top-level key you own
 **`condition_report:`** — never touch a key owned by another extractor:
-- `statement_of_works` (prompt 02)
-- `condition_report` (prompt 03 — this one)
-- `product_specification` (prompt 04)
-- `manufacturer_pricing` (prompt 05)
-- `labour_rates` (prompt 06)
+- `statement_of_works` (prompt 03)
+- `condition_report` (prompt 04 — this one)
+- `product_specification` (prompt 05)
+- `manufacturer_pricing` (prompt 06)
+- `labour_rates` (prompt 07)
 
 ### Procedure
 1. **Read** `<project_folder>/_extracted/project_data.yaml` if it exists; preserve every other top-level key verbatim.
@@ -359,7 +361,7 @@ project:
 extraction_meta:
   condition_report:
     extracted_at: "<ISO 8601>"
-    prompt_id: "03_condition_report"
+    prompt_id: "04_condition_report"
     source_files: ["<path>", ...]
     skipped: <bool>
     skip_reason: "<>"
@@ -374,11 +376,11 @@ extraction_meta:
 ```yaml
 project: { ... }
 extraction_meta: { ... }
-statement_of_works: { ... }       # owned by prompt 02
-condition_report: { ... }         # owned by prompt 03
-product_specification: { ... }    # owned by prompt 04
-manufacturer_pricing: { ... }     # owned by prompt 05
-labour_rates: { ... }             # owned by prompt 06
+statement_of_works: { ... }       # owned by prompt 03
+condition_report: { ... }         # owned by prompt 04
+product_specification: { ... }    # owned by prompt 05
+manufacturer_pricing: { ... }     # owned by prompt 06
+labour_rates: { ... }             # owned by prompt 07
 ```
 
 ### Skip case
